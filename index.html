@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Editor Cisco Script</title>
+	<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+	<div class="contenedor-aplicacion">
+		<aside class="sidebar">
+			<div class="bloque-logo">
+				<div class="contenedor-logo">
+					<img src="Logo.png" alt="Logo de CiscoScript">
+				</div>
+
+				<div>
+					<h1>CiscoScript</h1>
+				</div>
+			</div>
+
+			<div class="bloque-equipo">
+				<h2>Integrantes del equipo</h2>
+
+				<ul class="lista-integrantes">
+					<li>Espinosa Benítez Jesús</li>
+					<li>Landeros Villarruel Luis Ángel</li>
+					<li>González Zapete Sophia</li>
+					<li>Ortiz Vega Indigo Andre</li>
+				</ul>
+			</div>
+		</aside>
+
+		<main class="contenido-principal">
+			<section class="panel encabezado-editor">
+				<h1>Editor Cisco Script</h1>
+
+				<div class="acciones acciones-encabezado">
+					<button id="botonEjemplo" type="button">Cargar ejemplo</button>
+					<button id="botonLimpiar" type="button">Limpiar</button>
+				</div>
+			</section>
+
+			<section class="panel panel-editor">
+				<div class="barra-panel">
+					<div>
+						<h2>Entrada CiscoScript</h2>
+						<p>Escribe el código fuente. Los errores se subrayan en rojo.</p>
+					</div>
+				</div>
+
+				<div class="zona-editor">
+					<div id="numerosRenglon" class="numeros-renglon">1</div>
+
+					<div class="contenedor-codigo">
+						<pre id="capaResaltado" class="capa-resaltado" aria-hidden="true"></pre>
+						<textarea id="entradaCodigo" class="entrada-codigo" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="Editor de código CiscoScript"></textarea>
+						<div id="contenedorAutocompletado" class="autocompletado oculto"></div>
+					</div>
+				</div>
+			</section>
+
+			<section class="panel panel-estado">
+				<h2>Resultado del análisis</h2>
+
+				<div id="resumenAnalisis" class="resumen resumen-correcto">
+					Esperando código...
+				</div>
+
+				<h3>Errores detectados</h3>
+				<div id="contenedorErrores" class="lista-errores">
+					<p class="mensaje-vacio">No hay errores todavía.</p>
+				</div>
+
+				<h3>Sugerencias</h3>
+				<div id="contenedorSugerencias" class="lista-sugerencias">
+					<p class="mensaje-vacio">Las sugerencias aparecerán aquí.</p>
+				</div>
+			</section>
+
+			<section class="panel panel-tabla">
+				<div class="barra-panel">
+					<div>
+						<h2>Tabla de tokens</h2>
+						<p>Tokens generados por el analizador léxico.</p>
+					</div>
+				</div>
+
+				<div class="tabla-contenedor">
+					<table>
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>Token</th>
+								<th>Lexema</th>
+								<th>Categoría</th>
+								<th>Renglón</th>
+								<th>Columna</th>
+							</tr>
+						</thead>
+						<tbody id="cuerpoTablaTokens">
+							<tr>
+								<td colspan="6" class="celda-vacia">No hay tokens para mostrar.</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<section class="panel panel-arbol">
+				<h2>Árbol de sintaxis abstracta</h2>
+				<pre id="salidaArbol" class="salida-arbol">Sin árbol generado.</pre>
+			</section>
+
+			<footer class="pie">
+				<p>CiscoScript — Proyecto de Lenguajes y Autómatas I</p>
+			</footer>
+		</main>
+	</div>
+
+	<script src="CiscoScript.js"></script>
+</body>
+</html>

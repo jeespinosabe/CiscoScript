@@ -310,33 +310,6 @@ function sincronizarDesplazamiento() {
 	numerosRenglon.scrollTop = entradaCodigo.scrollTop;
 }
 
-function analizarCodigo() {
-	const texto = entradaCodigo.value;
-	const resultadoLexico = analizarLexico(texto);
-	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
-	const resultadoRepeticion = resultadoSintactico.arbol
-		? analizarRepeticiones(resultadoSintactico.arbol)
-		: { errores: [] };
-
-	const errores = [
-		...resultadoLexico.errores,
-		...resultadoSintactico.errores,
-		...resultadoRepeticion.errores
-	];
-	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
-	const hayErrores = errores.length > 0;
-
-	actualizarNumerosRenglon(texto);
-	actualizarResaltado(texto, errores, resultadoLexico.tokens);
-	mostrarTokens(tokensParaTabla);
-	mostrarErrores(errores);
-	mostrarSugerencias(errores);
-	mostrarResumen(tokensParaTabla, errores);
-	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
-	actualizarAutocompletado();
-
-	sincronizarDesplazamiento();
-}
 
 //AFD 1 General
 function analizarLexico(texto) {
@@ -2972,6 +2945,1100 @@ function escaparHtml(texto) {
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#039;');
+}
+
+// Extensión semántica de CiscoScript
+function analizarCodigo() {
+	const texto = entradaCodigo.value;
+	const resultadoLexico = analizarLexico(texto);
+	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
+	const resultadoSemantico = resultadoSintactico.arbol
+		? analizarSemantico(resultadoSintactico.arbol)
+		: { errores: [] };
+
+	const errores = [
+		...resultadoLexico.errores,
+		...resultadoSintactico.errores,
+		...resultadoSemantico.errores
+	];
+	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
+	const hayErrores = errores.length > 0;
+
+	actualizarNumerosRenglon(texto);
+	actualizarResaltado(texto, errores, resultadoLexico.tokens);
+	mostrarTokens(tokensParaTabla);
+	mostrarErrores(errores);
+	mostrarSugerencias(errores);
+	mostrarResumen(tokensParaTabla, errores);
+	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
+	actualizarAutocompletado();
+
+	sincronizarDesplazamiento();
+}
+
+AnalizadorSintactico.prototype.analizarListaInstruccionesRouter = function() {
+	const instrucciones = [];
+
+	while (!this.coincide('TK_RES_FIN') && !this.coincide('TK_FNA')) {
+		if (this.esInicioInstruccionRouter(this.tokenActual().tipo)) {
+			const instruccion = this.analizarInstruccionRouter();
+
+			if (instruccion) {
+				instrucciones.push(instruccion);
+			}
+		} else {
+			const token = this.tokenActual();
+
+			this.registrarError({
+				token,
+				esperado: 'instrucción válida dentro de ROUTER',
+				descripcion: this.obtenerDescripcionInstruccionFueraDeBloque(token.tipo, 'ROUTER'),
+				sugerencia: 'Dentro de ROUTER usa basica, hostname, ssh, puerto con ip, pool o excluir.'
+			});
+
+			this.recuperarDentroDeBloque();
+		}
+	}
+
+	return instrucciones;
+};
+
+AnalizadorSintactico.prototype.analizarListaInstruccionesSwitch = function() {
+	const instrucciones = [];
+
+	while (!this.coincide('TK_RES_FIN') && !this.coincide('TK_FNA')) {
+		if (this.esInicioInstruccionSwitch(this.tokenActual().tipo)) {
+			const instruccion = this.analizarInstruccionSwitch();
+
+			if (instruccion) {
+				instrucciones.push(instruccion);
+			}
+		} else {
+			const token = this.tokenActual();
+
+			this.registrarError({
+				token,
+				esperado: 'instrucción válida dentro de SWITCH',
+				descripcion: this.obtenerDescripcionInstruccionFueraDeBloque(token.tipo, 'SWITCH'),
+				sugerencia: 'Dentro de SWITCH usa basica, hostname, ssh, vlan o puerto con acceso.'
+			});
+
+			this.recuperarDentroDeBloque();
+		}
+	}
+
+	return instrucciones;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionPuertoRouter = function() {
+	const nodo = crearNodo('ConfiguracionPuertoRouter');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'puerto de router',
+		patron: [
+			{ tipo: 'TK_RES_PUERTO' },
+			{ tipo: 'TK_IFACE', nombre: 'interfaz' },
+			{ tipo: 'TK_RES_IP' },
+			{ tipo: 'TK_IP', nombre: 'ip' },
+			{ tipo: 'TK_MASK', nombre: 'mascara' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La configuración de puerto en ROUTER solo acepta interfaz, ip y máscara en ese orden.',
+		sugerenciaBase: 'Usa el formato: puerto g0/0 ip 192.168.1.1 /24.'
+	});
+
+	if (resultado.interfaz) {
+		nodo.atributos.interfaz = resultado.interfaz.lexema;
+		nodo.tokenInterfaz = resultado.interfaz;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+	}
+
+	if (resultado.ip) {
+		nodo.atributos.ip = resultado.ip.lexema;
+		nodo.tokenReferencia = resultado.ip;
+		nodo.tokenIp = resultado.ip;
+	} else {
+		nodo.atributos.ip = 'sin_ip';
+	}
+
+	if (resultado.mascara) {
+		nodo.atributos.mascara = resultado.mascara.lexema;
+		nodo.tokenMascara = resultado.mascara;
+	} else {
+		nodo.atributos.mascara = 'sin_mascara';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionPoolDhcp = function() {
+	const nodo = crearNodo('ConfiguracionPoolDhcp');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'pool',
+		patron: [
+			{ tipo: 'TK_RES_POOL' },
+			{ tipo: 'TK_ID', nombre: 'nombre' },
+			{ tipo: 'TK_RES_RED' },
+			{ tipo: 'TK_IP', nombre: 'red' },
+			{ tipo: 'TK_MASK', nombre: 'mascara' },
+			{ tipo: 'TK_RES_GATEWAY' },
+			{ tipo: 'TK_IP', nombre: 'gateway' },
+			{ tipo: 'TK_RES_DNS' },
+			{ tipo: 'TK_IP', nombre: 'dns' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La instrucción pool solo acepta nombre, red, máscara, gateway y dns en ese orden.',
+		sugerenciaBase: 'Usa el formato: pool LAN1 red 192.168.1.0 /24 gateway 192.168.1.1 dns 8.8.8.8.'
+	});
+
+	if (resultado.nombre) {
+		nodo.atributos.nombre = resultado.nombre.lexema;
+		nodo.tokenReferencia = resultado.nombre;
+	} else {
+		nodo.atributos.nombre = 'sin_nombre';
+	}
+
+	if (resultado.red) {
+		nodo.atributos.red = resultado.red.lexema;
+		nodo.tokenRed = resultado.red;
+	} else {
+		nodo.atributos.red = 'sin_red';
+	}
+
+	if (resultado.mascara) {
+		nodo.atributos.mascara = resultado.mascara.lexema;
+		nodo.tokenMascara = resultado.mascara;
+	} else {
+		nodo.atributos.mascara = 'sin_mascara';
+	}
+
+	if (resultado.gateway) {
+		nodo.atributos.gateway = resultado.gateway.lexema;
+		nodo.tokenGateway = resultado.gateway;
+	} else {
+		nodo.atributos.gateway = 'sin_gateway';
+	}
+
+	if (resultado.dns) {
+		nodo.atributos.dns = resultado.dns.lexema;
+		nodo.tokenDns = resultado.dns;
+	} else {
+		nodo.atributos.dns = 'sin_dns';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionExcluirIp = function() {
+	const nodo = crearNodo('ConfiguracionExcluirIp');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'excluir',
+		patron: [
+			{ tipo: 'TK_RES_EXCLUIR' },
+			{ tipo: 'TK_IP', nombre: 'ipInicial' },
+			{ tipo: 'TK_IP', nombre: 'ipFinal' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La instrucción excluir solo acepta dos direcciones IP.',
+		sugerenciaBase: 'Usa el formato: excluir 192.168.1.1 192.168.1.10.'
+	});
+
+	if (resultado.ipInicial) {
+		nodo.atributos.ipInicial = resultado.ipInicial.lexema;
+		nodo.tokenReferencia = resultado.ipInicial;
+		nodo.tokenIpInicial = resultado.ipInicial;
+	} else {
+		nodo.atributos.ipInicial = 'sin_ip_inicial';
+	}
+
+	if (resultado.ipFinal) {
+		nodo.atributos.ipFinal = resultado.ipFinal.lexema;
+		nodo.tokenIpFinal = resultado.ipFinal;
+	} else {
+		nodo.atributos.ipFinal = 'sin_ip_final';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionVlan = function() {
+	const nodo = crearNodo('ConfiguracionVlan');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'vlan',
+		patron: [
+			{ tipo: 'TK_RES_VLAN' },
+			{ tipo: 'TK_NUM', nombre: 'numero' },
+			{ tipo: 'TK_RES_NOMBRE' },
+			{ tipo: 'TK_ID', nombre: 'nombre' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La instrucción vlan solo acepta número y nombre en ese orden.',
+		sugerenciaBase: 'Usa el formato: vlan 10 nombre Ventas.'
+	});
+
+	if (resultado.numero) {
+		nodo.atributos.numero = resultado.numero.lexema;
+		nodo.tokenReferencia = resultado.numero;
+		nodo.tokenNumero = resultado.numero;
+	} else {
+		nodo.atributos.numero = 'sin_numero';
+	}
+
+	if (resultado.nombre) {
+		nodo.atributos.nombre = resultado.nombre.lexema;
+	} else {
+		nodo.atributos.nombre = 'sin_nombre';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionPuertoSwitch = function() {
+	const nodo = crearNodo('ConfiguracionPuertoSwitch');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'puerto de switch',
+		patron: [
+			{ tipo: 'TK_RES_PUERTO' },
+			{ tipo: 'TK_IFACE', nombre: 'interfaz' },
+			{ tipo: 'TK_RES_ACCESO' },
+			{ tipo: 'TK_NUM', nombre: 'vlan' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La configuración de puerto en SWITCH solo acepta interfaz, acceso y número de VLAN en ese orden.',
+		sugerenciaBase: 'Usa el formato: puerto fa0/1 acceso 10.'
+	});
+
+	if (resultado.interfaz) {
+		nodo.atributos.interfaz = resultado.interfaz.lexema;
+		nodo.tokenReferencia = resultado.interfaz;
+		nodo.tokenInterfaz = resultado.interfaz;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+	}
+
+	if (resultado.vlan) {
+		nodo.atributos.vlan = resultado.vlan.lexema;
+		nodo.tokenVlan = resultado.vlan;
+	} else {
+		nodo.atributos.vlan = 'sin_vlan';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarSentenciaProbarPing = function() {
+	const nodo = crearNodo('SentenciaProbarPing');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'probar ping',
+		patron: [
+			{ tipo: 'TK_RES_PROBAR' },
+			{ tipo: 'TK_RES_PING' },
+			{ tipo: 'TK_ID', nombre: 'origen' },
+			{ tipo: 'TK_ID', nombre: 'destino' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionNivelPrograma(),
+		descripcionBase: 'La sentencia probar ping solo acepta la palabra ping y dos dispositivos.',
+		sugerenciaBase: 'Usa el formato: probar ping PC1 PC2.'
+	});
+
+	if (resultado.origen) {
+		nodo.atributos.origen = resultado.origen.lexema;
+		nodo.tokenReferencia = resultado.origen;
+		nodo.tokenOrigen = resultado.origen;
+	} else {
+		nodo.atributos.origen = 'sin_origen';
+	}
+
+	if (resultado.destino) {
+		nodo.atributos.destino = resultado.destino.lexema;
+		nodo.tokenDestino = resultado.destino;
+	} else {
+		nodo.atributos.destino = 'sin_destino';
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarSentenciaMostrarRedes = function() {
+	const nodo = crearNodo('SentenciaMostrarRedes');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'mostrar redes',
+		patron: [
+			{ tipo: 'TK_RES_MOSTRAR', nombre: 'mostrar' },
+			{ tipo: 'TK_RES_REDES' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionNivelPrograma(),
+		descripcionBase: 'La sentencia mostrar redes no acepta parámetros adicionales.',
+		sugerenciaBase: 'La sentencia correcta es solamente: mostrar redes.'
+	});
+
+	if (resultado.mostrar) {
+		nodo.tokenReferencia = resultado.mostrar;
+	}
+
+	return nodo;
+};
+
+function crearErrorSemantico(datos) {
+	const token = datos.token || {
+		lexema: '—',
+		tipo: 'valor semántico',
+		renglon: 1,
+		columna: 1,
+		inicioGlobal: 0,
+		finGlobal: 0
+	};
+
+	return {
+		tipo: `Semántico: ${datos.nombre}`,
+		renglon: token.renglon,
+		columna: token.columna,
+		lexema: token.lexema,
+		tokenEncontrado: token.tipo,
+		tokenEsperado: datos.esperado,
+		descripcion: datos.descripcion,
+		sugerencia: datos.sugerencia,
+		inicioGlobal: token.inicioGlobal,
+		finGlobal: token.finGlobal
+	};
+}
+
+function crearContextoSemantico(arbol) {
+	const contexto = {
+		arbol,
+		dispositivos: [],
+		routers: [],
+		switches: [],
+		pings: [],
+		mostrarRedes: []
+	};
+
+	for (const nodo of arbol.hijos) {
+		if (nodo.tipo === 'BloqueRouter') {
+			const router = crearRegistroRouterSemantico(nodo);
+			contexto.dispositivos.push(router);
+			contexto.routers.push(router);
+			continue;
+		}
+
+		if (nodo.tipo === 'BloqueSwitch') {
+			const switchRegistro = crearRegistroSwitchSemantico(nodo);
+			contexto.dispositivos.push(switchRegistro);
+			contexto.switches.push(switchRegistro);
+			continue;
+		}
+
+		if (nodo.tipo === 'SentenciaProbarPing') {
+			contexto.pings.push(nodo);
+			continue;
+		}
+
+		if (nodo.tipo === 'SentenciaMostrarRedes') {
+			contexto.mostrarRedes.push(nodo);
+		}
+	}
+
+	return contexto;
+}
+
+function crearRegistroRouterSemantico(bloque) {
+	const router = {
+		nodo: bloque,
+		nombre: bloque.atributos.nombre || 'sin_nombre',
+		tipoDispositivo: 'ROUTER',
+		interfaces: [],
+		puertosTroncales: [],
+		subpuertos: [],
+		pools: [],
+		exclusiones: []
+	};
+
+	for (const instruccion of bloque.hijos) {
+		if (instruccion.tipo === 'ConfiguracionPuertoRouter') {
+			if (instruccion.atributos.modo === 'troncal') {
+				router.puertosTroncales.push(instruccion);
+			} else {
+				router.interfaces.push(instruccion);
+			}
+		}
+
+		if (instruccion.tipo === 'ConfiguracionSubpuertoRouter') {
+			router.interfaces.push(instruccion);
+			router.subpuertos.push(instruccion);
+		}
+
+		if (instruccion.tipo === 'ConfiguracionPoolDhcp') {
+			router.pools.push(instruccion);
+		}
+
+		if (instruccion.tipo === 'ConfiguracionExcluirIp') {
+			router.exclusiones.push(instruccion);
+		}
+	}
+
+	return router;
+}
+
+function crearRegistroSwitchSemantico(bloque) {
+	const switchRegistro = {
+		nodo: bloque,
+		nombre: bloque.atributos.nombre || 'sin_nombre',
+		tipoDispositivo: 'SWITCH',
+		vlans: [],
+		puertosAcceso: [],
+		troncales: [],
+		administraciones: []
+	};
+
+	for (const instruccion of bloque.hijos) {
+		if (instruccion.tipo === 'ConfiguracionVlan') {
+			switchRegistro.vlans.push(instruccion);
+		}
+
+		if (instruccion.tipo === 'ConfiguracionPuertoSwitch') {
+			switchRegistro.puertosAcceso.push(instruccion);
+		}
+
+		if (instruccion.tipo === 'ConfiguracionTroncalSwitch') {
+			switchRegistro.troncales.push(instruccion);
+		}
+
+		if (instruccion.tipo === 'ConfiguracionAdministracionSwitch') {
+			switchRegistro.administraciones.push(instruccion);
+		}
+	}
+
+	return switchRegistro;
+}
+
+function esValorValido(valor, valorInvalido) {
+	return valor && valor !== valorInvalido;
+}
+
+function ipANumero(ip) {
+	const partes = ip.split('.').map(Number);
+	return (((partes[0] * 256 + partes[1]) * 256 + partes[2]) * 256 + partes[3]) >>> 0;
+}
+
+function numeroAIp(numero) {
+	return [
+		(numero >>> 24) & 255,
+		(numero >>> 16) & 255,
+		(numero >>> 8) & 255,
+		numero & 255
+	].join('.');
+}
+
+function mascaraCidrANumero(mascara) {
+	const bits = Number(String(mascara).replace('/', ''));
+
+	if (bits === 0) {
+		return 0;
+	}
+
+	return (0xffffffff << (32 - bits)) >>> 0;
+}
+
+function obtenerInformacionRed(ip, mascara) {
+	if (!esIpValida(ip) || !expresionMascara.test(mascara)) {
+		return null;
+	}
+
+	const ipNumero = ipANumero(ip);
+	const mascaraNumero = mascaraCidrANumero(mascara);
+	const redNumero = (ipNumero & mascaraNumero) >>> 0;
+	const broadcastNumero = (redNumero | (~mascaraNumero >>> 0)) >>> 0;
+
+	return {
+		ip,
+		mascara,
+		red: numeroAIp(redNumero),
+		broadcast: numeroAIp(broadcastNumero),
+		redNumero,
+		broadcastNumero,
+		ipNumero
+	};
+}
+
+function ipPerteneceARed(ip, red, mascara) {
+	const informacionRed = obtenerInformacionRed(red, mascara);
+
+	if (!informacionRed || !esIpValida(ip)) {
+		return false;
+	}
+
+	const ipNumero = ipANumero(ip);
+	return ipNumero >= informacionRed.redNumero && ipNumero <= informacionRed.broadcastNumero;
+}
+
+function rangosSeCruzan(inicioA, finA, inicioB, finB) {
+	return inicioA <= finB && inicioB <= finA;
+}
+
+function obtenerInterfacesRouterConIp(contexto) {
+	const registros = [];
+
+	for (const router of contexto.routers) {
+		for (const interfaz of router.interfaces) {
+			if (!esValorValido(interfaz.atributos.ip, 'sin_ip') || !esValorValido(interfaz.atributos.mascara, 'sin_mascara')) {
+				continue;
+			}
+
+			registros.push({
+				dispositivo: router.nombre,
+				tipoDispositivo: router.tipoDispositivo,
+				interfaz: interfaz.atributos.interfaz || 'sin_interfaz',
+				ip: interfaz.atributos.ip,
+				mascara: interfaz.atributos.mascara,
+				nodo: interfaz
+			});
+		}
+	}
+
+	return registros;
+}
+
+function obtenerIpsRouter(contexto) {
+	const registros = obtenerInterfacesRouterConIp(contexto);
+	const ips = [];
+
+	for (const registro of registros) {
+		ips.push(registro.ip);
+	}
+
+	return ips;
+}
+
+function buscarRouterPorIp(contexto, ip) {
+	const registros = obtenerInterfacesRouterConIp(contexto);
+
+	for (const registro of registros) {
+		if (registro.ip === ip) {
+			return registro;
+		}
+	}
+
+	return null;
+}
+
+function routerTieneIp(router, ip) {
+	for (const interfaz of router.interfaces) {
+		if (interfaz.atributos.ip === ip) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function obtenerVlansSwitch(switchRegistro) {
+	const vlans = new Set();
+
+	for (const vlan of switchRegistro.vlans) {
+		if (esValorValido(vlan.atributos.numero, 'sin_numero')) {
+			vlans.add(vlan.atributos.numero);
+		}
+	}
+
+	return vlans;
+}
+
+function obtenerListaVlansTroncal(troncal) {
+	if (!troncal.atributos.vlansPermitidas) {
+		return [];
+	}
+
+	const vlans = troncal.atributos.vlansPermitidas.split(',');
+	const resultado = [];
+
+	for (const vlan of vlans) {
+		const valor = vlan.trim();
+
+		if (valor) {
+			resultado.push(valor);
+		}
+	}
+
+	return resultado;
+}
+
+function obtenerInterfazPadre(interfaz) {
+	return String(interfaz || '').split('.')[0];
+}
+function analizarSemantico(arbol) {
+	const errores = [];
+
+	if (!arbol || !Array.isArray(arbol.hijos)) {
+		return { errores };
+	}
+
+	const contexto = crearContextoSemantico(arbol);
+
+	validarIdentificadorDispositivoDuplicado(contexto, errores);
+	validarInterfazRouterRepetida(contexto, errores);
+	validarInterfazSwitchRepetida(contexto, errores);
+	validarDireccionIpDuplicada(contexto, errores);
+	validarNombrePoolDhcpRepetido(contexto, errores);
+	validarVlanDuplicada(contexto, errores);
+	validarPuertoAsignadoAVlanInexistente(contexto, errores);
+	validarGatewayFueraDeRedPoolDhcp(contexto, errores);
+	validarGatewayNoConfiguradoEnInterfazRouter(contexto, errores);
+	validarPoolDhcpSinInterfazRelacionada(contexto, errores);
+	validarIpExcluidaFueraDelPoolDhcp(contexto, errores);
+	validarRangoExclusionInvertido(contexto, errores);
+	validarRangoExclusionRepetido(contexto, errores);
+	validarRangoExclusionCruzado(contexto, errores);
+	validarDireccionRedUsadaComoIpInterfaz(contexto, errores);
+
+	return { errores };
+}
+
+//--1. Identificador de dispositivo duplicado
+function validarIdentificadorDispositivoDuplicado(contexto, errores) {
+	const identificadores = new Map();
+
+	for (const dispositivo of contexto.dispositivos) {
+		if (!esValorValido(dispositivo.nombre, 'sin_nombre')) {
+			continue;
+		}
+
+		const clave = dispositivo.nombre.toLowerCase();
+
+		if (identificadores.has(clave)) {
+			const anterior = identificadores.get(clave);
+			errores.push(crearErrorSemantico({
+				nombre: 'Identificador de dispositivo duplicado',
+				token: dispositivo.nodo.tokenReferencia,
+				esperado: 'identificador de dispositivo único',
+				descripcion: `El identificador "${dispositivo.nombre}" ya fue usado en un ${anterior.tipoDispositivo}.`,
+				sugerencia: `Cambia el identificador "${dispositivo.nombre}" por otro nombre, por ejemplo ${sugerirNombreDispositivo(dispositivo.nombre)}.`
+			}));
+			continue;
+		}
+
+		identificadores.set(clave, dispositivo);
+	}
+}
+
+//--2. Interfaz de router repetida
+function validarInterfazRouterRepetida(contexto, errores) {
+	for (const router of contexto.routers) {
+		const interfaces = new Map();
+
+		for (const interfaz of router.interfaces.concat(router.puertosTroncales)) {
+			if (!esValorValido(interfaz.atributos.interfaz, 'sin_interfaz')) {
+				continue;
+			}
+
+			const clave = interfaz.atributos.interfaz.toLowerCase();
+
+			if (interfaces.has(clave)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Interfaz de router repetida',
+					token: interfaz.tokenInterfaz || interfaz.tokenReferencia,
+					esperado: 'interfaz de router no repetida',
+					descripcion: `La interfaz ${interfaz.atributos.interfaz} ya fue configurada en el ROUTER ${router.nombre}.`,
+					sugerencia: `Usa otra interfaz o elimina la configuración repetida de ${interfaz.atributos.interfaz}.`
+				}));
+				continue;
+			}
+
+			interfaces.set(clave, interfaz);
+		}
+	}
+}
+
+//--3. Interfaz de switch repetida
+function validarInterfazSwitchRepetida(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const interfaces = new Map();
+		const interfacesSwitch = switchRegistro.puertosAcceso.concat(switchRegistro.troncales);
+
+		for (const interfaz of interfacesSwitch) {
+			if (!esValorValido(interfaz.atributos.interfaz, 'sin_interfaz')) {
+				continue;
+			}
+
+			const clave = interfaz.atributos.interfaz.toLowerCase();
+
+			if (interfaces.has(clave)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Interfaz de switch repetida',
+					token: interfaz.tokenInterfaz || interfaz.tokenReferencia,
+					esperado: 'interfaz de switch no repetida',
+					descripcion: `La interfaz ${interfaz.atributos.interfaz} ya fue configurada en el SWITCH ${switchRegistro.nombre}.`,
+					sugerencia: `Usa otro puerto o elimina la configuración repetida de ${interfaz.atributos.interfaz}.`
+				}));
+				continue;
+			}
+
+			interfaces.set(clave, interfaz);
+		}
+	}
+}
+
+//--4. Dirección IP duplicada
+function validarDireccionIpDuplicada(contexto, errores) {
+	const direcciones = new Map();
+	const registrosRouter = obtenerInterfacesRouterConIp(contexto);
+
+	for (const registro of registrosRouter) {
+		if (direcciones.has(registro.ip)) {
+			const anterior = direcciones.get(registro.ip);
+			errores.push(crearErrorSemantico({
+				nombre: 'Dirección IP duplicada',
+				token: registro.nodo.tokenIp || registro.nodo.tokenReferencia,
+				esperado: 'dirección IP única',
+				descripcion: `La IP ${registro.ip} ya fue asignada al ${anterior.tipoDispositivo} ${anterior.dispositivo}, en la interfaz ${anterior.interfaz}.`,
+				sugerencia: `Asigna una IP diferente a la interfaz ${registro.interfaz} del ${registro.tipoDispositivo} ${registro.dispositivo}.`
+			}));
+			continue;
+		}
+
+		direcciones.set(registro.ip, registro);
+	}
+
+	for (const switchRegistro of contexto.switches) {
+		for (const administracion of switchRegistro.administraciones) {
+			const ip = administracion.atributos.ip;
+
+			if (!esValorValido(ip, 'sin_ip')) {
+				continue;
+			}
+
+			if (direcciones.has(ip)) {
+				const anterior = direcciones.get(ip);
+				errores.push(crearErrorSemantico({
+					nombre: 'Dirección IP duplicada',
+					token: administracion.tokenIp || administracion.tokenReferencia,
+					esperado: 'dirección IP única',
+					descripcion: `La IP ${ip} ya fue asignada al ${anterior.tipoDispositivo} ${anterior.dispositivo}.`,
+					sugerencia: `Asigna otra IP de administración al SWITCH ${switchRegistro.nombre}.`
+				}));
+				continue;
+			}
+
+			direcciones.set(ip, {
+				dispositivo: switchRegistro.nombre,
+				tipoDispositivo: 'SWITCH',
+				interfaz: `vlan ${administracion.atributos.vlan}`,
+				ip,
+				nodo: administracion
+			});
+		}
+	}
+}
+
+//--5. Nombre de pool DHCP repetido
+function validarNombrePoolDhcpRepetido(contexto, errores) {
+	for (const router of contexto.routers) {
+		const pools = new Map();
+
+		for (const pool of router.pools) {
+			if (!esValorValido(pool.atributos.nombre, 'sin_nombre')) {
+				continue;
+			}
+
+			const clave = pool.atributos.nombre.toLowerCase();
+
+			if (pools.has(clave)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Nombre de pool DHCP repetido',
+					token: pool.tokenReferencia,
+					esperado: 'nombre de pool DHCP único',
+					descripcion: `El pool ${pool.atributos.nombre} ya existe dentro del ROUTER ${router.nombre}.`,
+					sugerencia: `Usa otro nombre de pool o elimina el pool repetido ${pool.atributos.nombre}.`
+				}));
+				continue;
+			}
+
+			pools.set(clave, pool);
+		}
+	}
+}
+
+//--6. VLAN duplicada
+function validarVlanDuplicada(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const vlans = new Map();
+
+		for (const vlan of switchRegistro.vlans) {
+			if (!esValorValido(vlan.atributos.numero, 'sin_numero')) {
+				continue;
+			}
+
+			if (vlans.has(vlan.atributos.numero)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'VLAN duplicada',
+					token: vlan.tokenNumero || vlan.tokenReferencia,
+					esperado: 'VLAN única dentro del switch',
+					descripcion: `La VLAN ${vlan.atributos.numero} ya fue declarada en el SWITCH ${switchRegistro.nombre}.`,
+					sugerencia: `Usa otro número de VLAN o elimina la VLAN repetida ${vlan.atributos.numero}.`
+				}));
+				continue;
+			}
+
+			vlans.set(vlan.atributos.numero, vlan);
+		}
+	}
+}
+
+//--7. Puerto asignado a una VLAN inexistente
+function validarPuertoAsignadoAVlanInexistente(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const vlans = obtenerVlansSwitch(switchRegistro);
+
+		for (const puerto of switchRegistro.puertosAcceso) {
+			const vlan = puerto.atributos.vlan;
+
+			if (!esValorValido(vlan, 'sin_vlan')) {
+				continue;
+			}
+
+			if (!vlans.has(vlan)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Puerto asignado a una VLAN inexistente',
+					token: puerto.tokenVlan || puerto.tokenReferencia,
+					esperado: 'VLAN declarada en el switch',
+					descripcion: `El puerto ${puerto.atributos.interfaz} usa la VLAN ${vlan}, pero esa VLAN no fue declarada en el SWITCH ${switchRegistro.nombre}.`,
+					sugerencia: `Declara la VLAN ${vlan} antes de asignarla al puerto ${puerto.atributos.interfaz}.`
+				}));
+			}
+		}
+	}
+}
+
+//--8. Gateway fuera de la red del pool DHCP
+function validarGatewayFueraDeRedPoolDhcp(contexto, errores) {
+	for (const router of contexto.routers) {
+		for (const pool of router.pools) {
+			const red = pool.atributos.red;
+			const mascara = pool.atributos.mascara;
+			const gateway = pool.atributos.gateway;
+
+			if (!esValorValido(red, 'sin_red') || !esValorValido(mascara, 'sin_mascara') || !esValorValido(gateway, 'sin_gateway')) {
+				continue;
+			}
+
+			if (!ipPerteneceARed(gateway, red, mascara)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Gateway fuera de la red del pool DHCP',
+					token: pool.tokenGateway,
+					esperado: 'gateway dentro de la red del pool',
+					descripcion: `El gateway ${gateway} no pertenece a la red ${red}${mascara} del pool ${pool.atributos.nombre}.`,
+					sugerencia: `Usa un gateway que pertenezca a ${red}${mascara}.`
+				}));
+			}
+		}
+	}
+}
+
+//--9. Gateway no configurado en una interfaz del router
+function validarGatewayNoConfiguradoEnInterfazRouter(contexto, errores) {
+	for (const router of contexto.routers) {
+		for (const pool of router.pools) {
+			const gateway = pool.atributos.gateway;
+
+			if (!esValorValido(gateway, 'sin_gateway')) {
+				continue;
+			}
+
+			if (!buscarRouterPorIp(contexto, gateway)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Gateway no configurado en una interfaz del router',
+					token: pool.tokenGateway,
+					esperado: 'gateway configurado en alguna interfaz de router',
+					descripcion: `El gateway ${gateway} del pool ${pool.atributos.nombre} no está configurado en ninguna interfaz o subinterfaz de router de la topología.`,
+					sugerencia: `Configura ${gateway} en el router que será la puerta de enlace de esa red.`
+				}));
+			}
+		}
+	}
+}
+
+//--10. Pool DHCP sin interfaz relacionada
+function validarPoolDhcpSinInterfazRelacionada(contexto, errores) {
+	for (const routerDhcp of contexto.routers) {
+		for (const pool of routerDhcp.pools) {
+			const gateway = pool.atributos.gateway;
+
+			if (!esValorValido(gateway, 'sin_gateway')) {
+				continue;
+			}
+
+			const registroGateway = buscarRouterPorIp(contexto, gateway);
+
+			if (!registroGateway) {
+				continue;
+			}
+
+			if (registroGateway.dispositivo === routerDhcp.nombre) {
+				continue;
+			}
+
+			const helper = registroGateway.nodo.atributos.helper;
+
+			if (!helper || !routerTieneIp(routerDhcp, helper)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Pool DHCP sin interfaz relacionada',
+					token: registroGateway.nodo.tokenHelper || pool.tokenReferencia || pool.tokenGateway,
+					esperado: 'helper hacia el router que declara el pool',
+					descripcion: `El pool ${pool.atributos.nombre} está declarado en ${routerDhcp.nombre}, pero su gateway ${gateway} pertenece a ${registroGateway.dispositivo} y no hay helper hacia el servidor DHCP.`,
+					sugerencia: `Agrega helper en ${registroGateway.interfaz} apuntando a una IP del ROUTER ${routerDhcp.nombre}.`
+				}));
+			}
+		}
+	}
+}
+
+//--11. IP excluida fuera del pool DHCP
+function validarIpExcluidaFueraDelPoolDhcp(contexto, errores) {
+	for (const router of contexto.routers) {
+		for (const exclusion of router.exclusiones) {
+			const ipInicial = exclusion.atributos.ipInicial;
+			const ipFinal = exclusion.atributos.ipFinal;
+
+			if (!esValorValido(ipInicial, 'sin_ip_inicial') || !esValorValido(ipFinal, 'sin_ip_final')) {
+				continue;
+			}
+
+			let perteneceAPool = false;
+
+			for (const pool of router.pools) {
+				if (
+					esValorValido(pool.atributos.red, 'sin_red') &&
+					esValorValido(pool.atributos.mascara, 'sin_mascara') &&
+					ipPerteneceARed(ipInicial, pool.atributos.red, pool.atributos.mascara) &&
+					ipPerteneceARed(ipFinal, pool.atributos.red, pool.atributos.mascara)
+				) {
+					perteneceAPool = true;
+					break;
+				}
+			}
+
+			if (!perteneceAPool) {
+				errores.push(crearErrorSemantico({
+					nombre: 'IP excluida fuera del pool DHCP',
+					token: exclusion.tokenReferencia,
+					esperado: 'rango dentro de algún pool DHCP del router',
+					descripcion: `El rango ${ipInicial} - ${ipFinal} no pertenece a ningún pool DHCP declarado en el ROUTER ${router.nombre}.`,
+					sugerencia: 'Ajusta el rango excluir para que pertenezca a la red de un pool DHCP existente.'
+				}));
+			}
+		}
+	}
+}
+
+//--12. Rango de exclusión invertido
+function validarRangoExclusionInvertido(contexto, errores) {
+	for (const router of contexto.routers) {
+		for (const exclusion of router.exclusiones) {
+			const ipInicial = exclusion.atributos.ipInicial;
+			const ipFinal = exclusion.atributos.ipFinal;
+
+			if (!esValorValido(ipInicial, 'sin_ip_inicial') || !esValorValido(ipFinal, 'sin_ip_final')) {
+				continue;
+			}
+
+			if (ipANumero(ipInicial) > ipANumero(ipFinal)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Rango de exclusión invertido',
+					token: exclusion.tokenReferencia,
+					esperado: 'IP inicial menor o igual que IP final',
+					descripcion: `El rango de exclusión está invertido: ${ipInicial} es mayor que ${ipFinal}.`,
+					sugerencia: `Escribe primero la IP menor y después la mayor: excluir ${ipFinal} ${ipInicial}.`
+				}));
+			}
+		}
+	}
+}
+
+//--13. Rango de exclusión repetido
+function validarRangoExclusionRepetido(contexto, errores) {
+	for (const router of contexto.routers) {
+		const rangos = new Map();
+
+		for (const exclusion of router.exclusiones) {
+			const ipInicial = exclusion.atributos.ipInicial;
+			const ipFinal = exclusion.atributos.ipFinal;
+
+			if (!esValorValido(ipInicial, 'sin_ip_inicial') || !esValorValido(ipFinal, 'sin_ip_final')) {
+				continue;
+			}
+
+			const clave = `${ipInicial}-${ipFinal}`;
+
+			if (rangos.has(clave)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Rango de exclusión repetido',
+					token: exclusion.tokenReferencia,
+					esperado: 'rango de exclusión no repetido',
+					descripcion: `El rango ${ipInicial} - ${ipFinal} ya fue declarado en el ROUTER ${router.nombre}.`,
+					sugerencia: 'Elimina uno de los rangos repetidos.'
+				}));
+				continue;
+			}
+
+			rangos.set(clave, exclusion);
+		}
+	}
+}
+
+//--14. Rango de exclusión cruzado
+function validarRangoExclusionCruzado(contexto, errores) {
+	for (const router of contexto.routers) {
+		const rangos = [];
+
+		for (const exclusion of router.exclusiones) {
+			const ipInicial = exclusion.atributos.ipInicial;
+			const ipFinal = exclusion.atributos.ipFinal;
+
+			if (!esValorValido(ipInicial, 'sin_ip_inicial') || !esValorValido(ipFinal, 'sin_ip_final')) {
+				continue;
+			}
+
+			const inicio = ipANumero(ipInicial);
+			const fin = ipANumero(ipFinal);
+
+			for (const rangoAnterior of rangos) {
+				if (rangosSeCruzan(inicio, fin, rangoAnterior.inicio, rangoAnterior.fin)) {
+					errores.push(crearErrorSemantico({
+						nombre: 'Rango de exclusión cruzado',
+						token: exclusion.tokenReferencia,
+						esperado: 'rangos de exclusión separados',
+						descripcion: `El rango ${ipInicial} - ${ipFinal} se cruza con el rango ${rangoAnterior.ipInicial} - ${rangoAnterior.ipFinal}.`,
+						sugerencia: 'Ajusta los rangos para que no compartan direcciones IP.'
+					}));
+					break;
+				}
+			}
+
+			rangos.push({ inicio, fin, ipInicial, ipFinal });
+		}
+	}
+}
+
+//--15. Dirección de red usada como IP de interfaz
+function validarDireccionRedUsadaComoIpInterfaz(contexto, errores) {
+	const registros = obtenerInterfacesRouterConIp(contexto);
+
+	for (const registro of registros) {
+		const informacionRed = obtenerInformacionRed(registro.ip, registro.mascara);
+
+		if (!informacionRed) {
+			continue;
+		}
+
+		if (registro.ip === informacionRed.red) {
+			errores.push(crearErrorSemantico({
+				nombre: 'Dirección de red usada como IP de interfaz',
+				token: registro.nodo.tokenIp || registro.nodo.tokenReferencia,
+				esperado: 'IP de host válida',
+				descripcion: `La IP ${registro.ip} no puede asignarse a una interfaz porque es la dirección de red de ${informacionRed.red}${registro.mascara}.`,
+				sugerencia: `Usa una IP de host dentro de la red, por ejemplo una diferente a ${informacionRed.red}.`
+			}));
+		}
+	}
 }
 
 analizarCodigo();

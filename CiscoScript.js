@@ -310,6 +310,33 @@ function sincronizarDesplazamiento() {
 	numerosRenglon.scrollTop = entradaCodigo.scrollTop;
 }
 
+function analizarCodigo() {
+	const texto = entradaCodigo.value;
+	const resultadoLexico = analizarLexico(texto);
+	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
+	const resultadoRepeticion = resultadoSintactico.arbol
+		? analizarRepeticiones(resultadoSintactico.arbol)
+		: { errores: [] };
+
+	const errores = [
+		...resultadoLexico.errores,
+		...resultadoSintactico.errores,
+		...resultadoRepeticion.errores
+	];
+	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
+	const hayErrores = errores.length > 0;
+
+	actualizarNumerosRenglon(texto);
+	actualizarResaltado(texto, errores, resultadoLexico.tokens);
+	mostrarTokens(tokensParaTabla);
+	mostrarErrores(errores);
+	mostrarSugerencias(errores);
+	mostrarResumen(tokensParaTabla, errores);
+	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
+	actualizarAutocompletado();
+
+	sincronizarDesplazamiento();
+}
 
 //AFD 1 General
 function analizarLexico(texto) {
@@ -2947,6 +2974,8 @@ function escaparHtml(texto) {
 		.replace(/'/g, '&#039;');
 }
 
+
+
 // Extensión semántica de CiscoScript
 function analizarCodigo() {
 	const texto = entradaCodigo.value;
@@ -3589,6 +3618,13 @@ function analizarSemantico(arbol) {
 	validarRangoExclusionRepetido(contexto, errores);
 	validarRangoExclusionCruzado(contexto, errores);
 	validarDireccionRedUsadaComoIpInterfaz(contexto, errores);
+	validarDireccionBroadcastUsadaComoIpInterfaz(contexto, errores);
+	validarDireccionRedPoolDhcpMalCalculada(contexto, errores);
+	validarRedesTraslapadasEnInterfacesRouter(contexto, errores);
+	validarOrigenPingInexistente(contexto, errores);
+	validarDestinoPingInexistente(contexto, errores);
+	validarPingEntreDispositivosSinIp(contexto, errores);
+	validarMostrarRedesSinRedesConfiguradas(contexto, errores);
 
 	return { errores };
 }
@@ -4038,6 +4074,247 @@ function validarDireccionRedUsadaComoIpInterfaz(contexto, errores) {
 				sugerencia: `Usa una IP de host dentro de la red, por ejemplo una diferente a ${informacionRed.red}.`
 			}));
 		}
+	}
+}
+
+//--16. Dirección broadcast usada como IP de interfaz
+function validarDireccionBroadcastUsadaComoIpInterfaz(contexto, errores) {
+	const registros = obtenerInterfacesRouterConIp(contexto);
+
+	for (const registro of registros) {
+		const informacionRed = obtenerInformacionRed(registro.ip, registro.mascara);
+
+		if (!informacionRed) {
+			continue;
+		}
+
+		if (registro.ip === informacionRed.broadcast) {
+			errores.push(crearErrorSemantico({
+				nombre: 'Dirección broadcast usada como IP de interfaz',
+				token: registro.nodo.tokenIp || registro.nodo.tokenReferencia,
+				esperado: 'IP de host válida',
+				descripcion: `La IP ${registro.ip} no puede asignarse a una interfaz porque es la dirección broadcast de ${informacionRed.red}${registro.mascara}.`,
+				sugerencia: `Usa una IP de host diferente al broadcast ${informacionRed.broadcast}.`
+			}));
+		}
+	}
+}
+
+//--17. Dirección de red del pool DHCP mal calculada
+function validarDireccionRedPoolDhcpMalCalculada(contexto, errores) {
+	for (const router of contexto.routers) {
+		for (const pool of router.pools) {
+			const red = pool.atributos.red;
+			const mascara = pool.atributos.mascara;
+
+			if (!esValorValido(red, 'sin_red') || !esValorValido(mascara, 'sin_mascara')) {
+				continue;
+			}
+
+			const informacionRed = obtenerInformacionRed(red, mascara);
+
+			if (!informacionRed) {
+				continue;
+			}
+
+			if (red !== informacionRed.red) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Dirección de red del pool DHCP mal calculada',
+					token: pool.tokenRed,
+					esperado: 'dirección base de la subred',
+					descripcion: `La dirección ${red}${mascara} no corresponde a la red base. La red correcta sería ${informacionRed.red}${mascara}.`,
+					sugerencia: `Cambia la red del pool por ${informacionRed.red}${mascara}.`
+				}));
+			}
+		}
+	}
+}
+
+//--18. Redes traslapadas en interfaces del router
+function validarRedesTraslapadasEnInterfacesRouter(contexto, errores) {
+	for (const router of contexto.routers) {
+		const redes = [];
+
+		for (const interfaz of router.interfaces) {
+			if (!esValorValido(interfaz.atributos.ip, 'sin_ip') || !esValorValido(interfaz.atributos.mascara, 'sin_mascara')) {
+				continue;
+			}
+
+			const informacionRed = obtenerInformacionRed(interfaz.atributos.ip, interfaz.atributos.mascara);
+
+			if (!informacionRed) {
+				continue;
+			}
+
+			for (const redAnterior of redes) {
+				if (rangosSeCruzan(informacionRed.redNumero, informacionRed.broadcastNumero, redAnterior.redNumero, redAnterior.broadcastNumero)) {
+					errores.push(crearErrorSemantico({
+						nombre: 'Redes traslapadas en interfaces del router',
+						token: interfaz.tokenIp || interfaz.tokenReferencia,
+						esperado: 'redes de interfaces separadas',
+						descripcion: `La red ${informacionRed.red}${interfaz.atributos.mascara} de ${interfaz.atributos.interfaz} se traslapa con ${redAnterior.red}${redAnterior.mascara}.`,
+						sugerencia: 'Ajusta las máscaras o direcciones para que las interfaces pertenezcan a redes diferentes.'
+					}));
+					break;
+				}
+			}
+
+			redes.push({
+				red: informacionRed.red,
+				mascara: interfaz.atributos.mascara,
+				redNumero: informacionRed.redNumero,
+				broadcastNumero: informacionRed.broadcastNumero
+			});
+		}
+	}
+}
+
+//--19. Origen de ping inexistente
+function validarOrigenPingInexistente(contexto, errores) {
+	const dispositivos = new Set();
+
+	for (const dispositivo of contexto.dispositivos) {
+		dispositivos.add(dispositivo.nombre.toLowerCase());
+	}
+
+	for (const ping of contexto.pings) {
+		const origen = ping.atributos.origen;
+
+		if (!esValorValido(origen, 'sin_origen')) {
+			continue;
+		}
+
+		if (!dispositivos.has(origen.toLowerCase())) {
+			errores.push(crearErrorSemantico({
+				nombre: 'Origen de ping inexistente',
+				token: ping.tokenOrigen || ping.tokenReferencia,
+				esperado: 'dispositivo origen existente',
+				descripcion: `El origen del ping ${origen} no existe en la topología.`,
+				sugerencia: `Declara un ROUTER o SWITCH llamado ${origen}, o cambia el origen del ping.`
+			}));
+		}
+	}
+}
+
+//--20. Destino de ping inexistente
+function validarDestinoPingInexistente(contexto, errores) {
+	const dispositivos = new Set();
+
+	for (const dispositivo of contexto.dispositivos) {
+		dispositivos.add(dispositivo.nombre.toLowerCase());
+	}
+
+	for (const ping of contexto.pings) {
+		const destino = ping.atributos.destino;
+
+		if (!esValorValido(destino, 'sin_destino')) {
+			continue;
+		}
+
+		if (!dispositivos.has(destino.toLowerCase())) {
+			errores.push(crearErrorSemantico({
+				nombre: 'Destino de ping inexistente',
+				token: ping.tokenDestino || ping.tokenReferencia,
+				esperado: 'dispositivo destino existente',
+				descripcion: `El destino del ping ${destino} no existe en la topología.`,
+				sugerencia: `Declara un ROUTER o SWITCH llamado ${destino}, o cambia el destino del ping.`
+			}));
+		}
+	}
+}
+
+//--21. Ping entre dispositivos sin IP
+function validarPingEntreDispositivosSinIp(contexto, errores) {
+	for (const ping of contexto.pings) {
+		const origen = buscarDispositivoPorNombre(contexto, ping.atributos.origen);
+		const destino = buscarDispositivoPorNombre(contexto, ping.atributos.destino);
+
+		if (!origen || !destino) {
+			continue;
+		}
+
+		if (!dispositivoTieneIp(origen) || !dispositivoTieneIp(destino)) {
+			errores.push(crearErrorSemantico({
+				nombre: 'Ping entre dispositivos sin IP',
+				token: ping.tokenReferencia,
+				esperado: 'origen y destino con IP configurada',
+				descripcion: `No se puede probar ping entre ${ping.atributos.origen} y ${ping.atributos.destino} porque uno o ambos dispositivos no tienen IP configurada.`,
+				sugerencia: 'Configura al menos una IP en cada dispositivo antes de probar ping.'
+			}));
+		}
+	}
+}
+
+function buscarDispositivoPorNombre(contexto, nombre) {
+	if (!nombre) {
+		return null;
+	}
+
+	for (const dispositivo of contexto.dispositivos) {
+		if (dispositivo.nombre.toLowerCase() === nombre.toLowerCase()) {
+			return dispositivo;
+		}
+	}
+
+	return null;
+}
+
+function dispositivoTieneIp(dispositivo) {
+	if (dispositivo.tipoDispositivo === 'ROUTER') {
+		for (const interfaz of dispositivo.interfaces) {
+			if (esValorValido(interfaz.atributos.ip, 'sin_ip')) {
+				return true;
+			}
+		}
+	}
+
+	if (dispositivo.tipoDispositivo === 'SWITCH') {
+		for (const administracion of dispositivo.administraciones) {
+			if (esValorValido(administracion.atributos.ip, 'sin_ip')) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+//--22. mostrar redes sin redes configuradas
+function validarMostrarRedesSinRedesConfiguradas(contexto, errores) {
+	if (!contexto.mostrarRedes.length) {
+		return;
+	}
+
+	let existenRedes = false;
+
+	for (const router of contexto.routers) {
+		if (router.interfaces.length || router.pools.length) {
+			existenRedes = true;
+			break;
+		}
+	}
+
+	if (!existenRedes) {
+		for (const switchRegistro of contexto.switches) {
+			if (switchRegistro.administraciones.length) {
+				existenRedes = true;
+				break;
+			}
+		}
+	}
+
+	if (existenRedes) {
+		return;
+	}
+
+	for (const mostrar of contexto.mostrarRedes) {
+		errores.push(crearErrorSemantico({
+			nombre: 'mostrar redes sin redes configuradas',
+			token: mostrar.tokenReferencia,
+			esperado: 'redes configuradas para mostrar',
+			descripcion: 'Se pidió mostrar redes, pero no hay interfaces, administraciones o pools desde donde obtener redes.',
+			sugerencia: 'Configura al menos una interfaz con IP o un pool DHCP antes de usar mostrar redes.'
+		}));
 	}
 }
 

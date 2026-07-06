@@ -164,7 +164,7 @@ const sugerenciasBase = [
 
 //estas son las expresiones regulares
 //REG TK_IFACE
-const expresionInterfaz = /^(fa|Fa|g|Gi|s|Se)\d+\/\d+(\/\d+)?$/;
+const expresionInterfaz = /^(fa|Fa|g|Gi|s|Se)\d+\/\d+(\/\d+)?(\.\d+)?$/;
 //REG TK_IP
 const expresionIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 //REG TK_MASK
@@ -174,7 +174,7 @@ const expresionNumero = /^[0-9]+$/;
 //REG TK_ID
 const expresionIdentificador = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 //REG TK_ERROR
-const expresionCaracterValido = /[a-zA-Z0-9 \t\r\n.\/:_-]/;
+const expresionCaracterValido = /[a-zA-Z0-9 \t\r\n.\/:,_-]/;
 
 const codigoEjemplo = `router R1:
 	basica
@@ -478,7 +478,7 @@ function analizarLexico(texto) {
 			const columnaInicio = columna;
 			let lexema = '';
 
-			while (indice < texto.length && /[a-zA-Z0-9_\/-]/.test(texto[indice])) {
+			while (indice < texto.length && /[a-zA-Z0-9_\/.-]/.test(texto[indice])) {
 				lexema += texto[indice];
 				indice++;
 				columna++;
@@ -3594,6 +3594,468 @@ function obtenerListaVlansTroncal(troncal) {
 function obtenerInterfazPadre(interfaz) {
 	return String(interfaz || '').split('.')[0];
 }
+
+
+// Extensión de tokens y sintaxis para subpuertos, troncales, helper y administración
+const palabrasReservadasRealistas = {
+	subpuerto: 'TK_RES_SUBPUERTO',
+	troncal: 'TK_RES_TRONCAL',
+	nativa: 'TK_RES_NATIVA',
+	vlans: 'TK_RES_VLANS',
+	helper: 'TK_RES_HELPER',
+	administracion: 'TK_RES_ADMINISTRACION',
+	sin_ip: 'TK_RES_SIN_IP'
+};
+
+for (const lexema in palabrasReservadasRealistas) {
+	if (!Object.prototype.hasOwnProperty.call(palabrasReservadasRealistas, lexema)) {
+		continue;
+	}
+
+	const token = palabrasReservadasRealistas[lexema];
+	palabrasReservadas[lexema] = token;
+	palabrasReservadasNormalizadas[lexema.toLowerCase()] = {
+		lexema,
+		token
+	};
+	descripcionesTokens[token] = 'Palabra reservada';
+	lexemasEsperados[token] = lexema;
+}
+
+descripcionesTokens.TK_COMA = 'Símbolo';
+lexemasEsperados.TK_COMA = ',';
+
+sugerenciasBase.push(
+	{ texto: 'subpuerto', detalle: 'router-on-a-stick' },
+	{ texto: 'troncal', detalle: 'enlace trunk' },
+	{ texto: 'nativa', detalle: 'vlan nativa' },
+	{ texto: 'vlans', detalle: 'vlans permitidas' },
+	{ texto: 'helper', detalle: 'dhcp relay' },
+	{ texto: 'administracion', detalle: 'switch' },
+	{ texto: 'sin_ip', detalle: 'router' }
+);
+
+const analizarLexicoOriginalSemantica = analizarLexico;
+analizarLexico = function(texto) {
+	const resultado = analizarLexicoOriginalSemantica(texto);
+	const tokensReconstruidos = [];
+	const erroresFiltrados = [];
+
+	for (const token of resultado.tokens) {
+		if (token.tipo === 'TK_ERROR' && token.lexema === ',') {
+			tokensReconstruidos.push(crearToken('TK_COMA', ',', token.renglon, token.columna, token.inicioGlobal, token.finGlobal));
+			continue;
+		}
+
+		tokensReconstruidos.push(token);
+	}
+
+	for (const error of resultado.errores) {
+		if (error.lexema === ',') {
+			continue;
+		}
+
+		erroresFiltrados.push(error);
+	}
+
+	return {
+		tokens: tokensReconstruidos,
+		tokensValidos: tokensReconstruidos.filter(function(token) {
+			return token.tipo !== 'TK_ERROR' && token.tipo !== 'TK_COMENTARIO';
+		}),
+		errores: erroresFiltrados
+	};
+};
+
+AnalizadorSintactico.prototype.esInicioInstruccionRouter = function(tipo) {
+	return [
+		'TK_RES_BASICA',
+		'TK_RES_HOSTNAME',
+		'TK_RES_SSH',
+		'TK_RES_PUERTO',
+		'TK_RES_SUBPUERTO',
+		'TK_RES_POOL',
+		'TK_RES_EXCLUIR'
+	].includes(tipo);
+};
+
+AnalizadorSintactico.prototype.esInicioInstruccionSwitch = function(tipo) {
+	return [
+		'TK_RES_BASICA',
+		'TK_RES_HOSTNAME',
+		'TK_RES_SSH',
+		'TK_RES_VLAN',
+		'TK_RES_PUERTO',
+		'TK_RES_TRONCAL',
+		'TK_RES_ADMINISTRACION'
+	].includes(tipo);
+};
+
+AnalizadorSintactico.prototype.obtenerTiposDetencionDentroDeBloque = function() {
+	return [
+		'TK_RES_BASICA',
+		'TK_RES_HOSTNAME',
+		'TK_RES_SSH',
+		'TK_RES_PUERTO',
+		'TK_RES_SUBPUERTO',
+		'TK_RES_POOL',
+		'TK_RES_EXCLUIR',
+		'TK_RES_VLAN',
+		'TK_RES_TRONCAL',
+		'TK_RES_ADMINISTRACION',
+		'TK_RES_FIN',
+		'TK_RES_ROUTER',
+		'TK_RES_SWITCH',
+		'TK_RES_PROBAR',
+		'TK_RES_MOSTRAR',
+		'TK_RES_VERIFICAR',
+		'TK_FNA'
+	];
+};
+
+AnalizadorSintactico.prototype.obtenerTiposDetencionEncabezado = function() {
+	return this.obtenerTiposDetencionDentroDeBloque();
+};
+
+AnalizadorSintactico.prototype.analizarInstruccionRouter = function() {
+	const tipo = this.tokenActual().tipo;
+
+	if (tipo === 'TK_RES_BASICA') {
+		return this.analizarConfiguracionBasica();
+	}
+
+	if (tipo === 'TK_RES_HOSTNAME') {
+		return this.analizarConfiguracionHostname();
+	}
+
+	if (tipo === 'TK_RES_SSH') {
+		return this.analizarConfiguracionSsh();
+	}
+
+	if (tipo === 'TK_RES_PUERTO') {
+		return this.analizarConfiguracionPuertoRouter();
+	}
+
+	if (tipo === 'TK_RES_SUBPUERTO') {
+		return this.analizarConfiguracionSubpuertoRouter();
+	}
+
+	if (tipo === 'TK_RES_POOL') {
+		return this.analizarConfiguracionPoolDhcp();
+	}
+
+	if (tipo === 'TK_RES_EXCLUIR') {
+		return this.analizarConfiguracionExcluirIp();
+	}
+
+	this.avanzar();
+	return null;
+};
+
+AnalizadorSintactico.prototype.analizarInstruccionSwitch = function() {
+	const tipo = this.tokenActual().tipo;
+
+	if (tipo === 'TK_RES_BASICA') {
+		return this.analizarConfiguracionBasica();
+	}
+
+	if (tipo === 'TK_RES_HOSTNAME') {
+		return this.analizarConfiguracionHostname();
+	}
+
+	if (tipo === 'TK_RES_SSH') {
+		return this.analizarConfiguracionSsh();
+	}
+
+	if (tipo === 'TK_RES_VLAN') {
+		return this.analizarConfiguracionVlan();
+	}
+
+	if (tipo === 'TK_RES_PUERTO') {
+		return this.analizarConfiguracionPuertoSwitch();
+	}
+
+	if (tipo === 'TK_RES_TRONCAL') {
+		return this.analizarConfiguracionTroncalSwitch();
+	}
+
+	if (tipo === 'TK_RES_ADMINISTRACION') {
+		return this.analizarConfiguracionAdministracionSwitch();
+	}
+
+	this.avanzar();
+	return null;
+};
+
+AnalizadorSintactico.prototype.validarFinInstruccionExtendida = function(nombreEstructura, sugerenciaBase) {
+	const tokenExtra = this.tokenActual();
+
+	if (!this.esTipoDetencion(tokenExtra.tipo, this.obtenerTiposDetencionDentroDeBloque()) && tokenExtra.tipo !== 'TK_FNA') {
+		this.registrarError({
+			token: tokenExtra,
+			esperado: `fin de la instrucción ${nombreEstructura}`,
+			descripcion: `La estructura "${nombreEstructura}" recibió un parámetro extra o fuera de lugar: "${tokenExtra.lexema}".`,
+			sugerencia: sugerenciaBase
+		});
+
+		this.recuperarHastaSiguienteEstructura(this.obtenerTiposDetencionDentroDeBloque());
+	}
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionPuertoRouter = function() {
+	const nodo = crearNodo('ConfiguracionPuertoRouter');
+	const sugerenciaBase = 'Usa: puerto g0/0 ip 192.168.1.1 /24, puerto g0/0 ip 192.168.1.1 /24 helper 10.0.0.1, puerto g0/1 troncal o puerto g0/1 sin_ip.';
+
+	this.consumir('TK_RES_PUERTO', 'La configuración de puerto debe iniciar con puerto.');
+	const tokenInterfaz = this.consumir('TK_IFACE', 'Después de puerto se esperaba una interfaz.');
+
+	if (tokenInterfaz) {
+		nodo.atributos.interfaz = tokenInterfaz.lexema;
+		nodo.tokenInterfaz = tokenInterfaz;
+		nodo.tokenReferencia = tokenInterfaz;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+	}
+
+	if (this.coincide('TK_RES_TRONCAL')) {
+		this.avanzar();
+		nodo.atributos.modo = 'troncal';
+		nodo.atributos.ip = 'sin_ip';
+		nodo.atributos.mascara = 'sin_mascara';
+		this.validarFinInstruccionExtendida('puerto de router', sugerenciaBase);
+		return nodo;
+	}
+
+	if (this.coincide('TK_RES_SIN_IP')) {
+		this.avanzar();
+		nodo.atributos.modo = 'sin_ip';
+		nodo.atributos.ip = 'sin_ip';
+		nodo.atributos.mascara = 'sin_mascara';
+		this.validarFinInstruccionExtendida('puerto de router', sugerenciaBase);
+		return nodo;
+	}
+
+	this.consumir('TK_RES_IP', 'Después de la interfaz se esperaba ip, troncal o sin_ip.');
+	const tokenIp = this.consumir('TK_IP', 'Después de ip se esperaba una dirección IPv4.');
+	const tokenMascara = this.consumir('TK_MASK', 'Después de la IP se esperaba una máscara CIDR.');
+
+	if (tokenIp) {
+		nodo.atributos.ip = tokenIp.lexema;
+		nodo.tokenIp = tokenIp;
+		nodo.tokenReferencia = tokenIp;
+	} else {
+		nodo.atributos.ip = 'sin_ip';
+	}
+
+	if (tokenMascara) {
+		nodo.atributos.mascara = tokenMascara.lexema;
+		nodo.tokenMascara = tokenMascara;
+	} else {
+		nodo.atributos.mascara = 'sin_mascara';
+	}
+
+	if (this.coincide('TK_RES_HELPER')) {
+		this.avanzar();
+		const tokenHelper = this.consumir('TK_IP', 'Después de helper se esperaba una IP de servidor DHCP.');
+
+		if (tokenHelper) {
+			nodo.atributos.helper = tokenHelper.lexema;
+			nodo.tokenHelper = tokenHelper;
+		}
+	}
+
+	this.validarFinInstruccionExtendida('puerto de router', sugerenciaBase);
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionSubpuertoRouter = function() {
+	const nodo = crearNodo('ConfiguracionSubpuertoRouter');
+	const sugerenciaBase = 'Usa: subpuerto g0/1.50 vlan 50 ip 180.10.3.129 /26, subpuerto g0/1.50 vlan 50 ip 180.10.3.129 /26 helper 10.0.0.1 o subpuerto g0/1.99 vlan 99 nativa.';
+
+	this.consumir('TK_RES_SUBPUERTO', 'La configuración de subpuerto debe iniciar con subpuerto.');
+	const tokenInterfaz = this.consumir('TK_IFACE', 'Después de subpuerto se esperaba una subinterfaz, por ejemplo g0/1.50.');
+	this.consumir('TK_RES_VLAN', 'Después de la subinterfaz se esperaba vlan.');
+	const tokenVlan = this.consumir('TK_NUM', 'Después de vlan se esperaba el número de VLAN.');
+
+	if (tokenInterfaz) {
+		nodo.atributos.interfaz = tokenInterfaz.lexema;
+		nodo.tokenInterfaz = tokenInterfaz;
+		nodo.tokenReferencia = tokenInterfaz;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+	}
+
+	if (tokenVlan) {
+		nodo.atributos.vlan = tokenVlan.lexema;
+		nodo.tokenVlan = tokenVlan;
+	} else {
+		nodo.atributos.vlan = 'sin_vlan';
+	}
+
+	if (this.coincide('TK_RES_NATIVA')) {
+		this.avanzar();
+		nodo.atributos.modo = 'nativa';
+		nodo.atributos.ip = 'sin_ip';
+		nodo.atributos.mascara = 'sin_mascara';
+		this.validarFinInstruccionExtendida('subpuerto de router', sugerenciaBase);
+		return nodo;
+	}
+
+	this.consumir('TK_RES_IP', 'Después de vlan se esperaba ip o nativa.');
+	const tokenIp = this.consumir('TK_IP', 'Después de ip se esperaba una dirección IPv4.');
+	const tokenMascara = this.consumir('TK_MASK', 'Después de la IP se esperaba una máscara CIDR.');
+
+	if (tokenIp) {
+		nodo.atributos.ip = tokenIp.lexema;
+		nodo.tokenIp = tokenIp;
+	} else {
+		nodo.atributos.ip = 'sin_ip';
+	}
+
+	if (tokenMascara) {
+		nodo.atributos.mascara = tokenMascara.lexema;
+		nodo.tokenMascara = tokenMascara;
+	} else {
+		nodo.atributos.mascara = 'sin_mascara';
+	}
+
+	if (this.coincide('TK_RES_HELPER')) {
+		this.avanzar();
+		const tokenHelper = this.consumir('TK_IP', 'Después de helper se esperaba una IP de servidor DHCP.');
+
+		if (tokenHelper) {
+			nodo.atributos.helper = tokenHelper.lexema;
+			nodo.tokenHelper = tokenHelper;
+		}
+	}
+
+	this.validarFinInstruccionExtendida('subpuerto de router', sugerenciaBase);
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionTroncalSwitch = function() {
+	const nodo = crearNodo('ConfiguracionTroncalSwitch');
+	const sugerenciaBase = 'Usa el formato: troncal g0/1 nativa 99 vlans 50,90,98,99.';
+
+	this.consumir('TK_RES_TRONCAL', 'La configuración troncal debe iniciar con troncal.');
+	const tokenInterfaz = this.consumir('TK_IFACE', 'Después de troncal se esperaba una interfaz.');
+	this.consumir('TK_RES_NATIVA', 'Después de la interfaz se esperaba nativa.');
+	const tokenVlanNativa = this.consumir('TK_NUM', 'Después de nativa se esperaba el número de VLAN nativa.');
+	this.consumir('TK_RES_VLANS', 'Después de la VLAN nativa se esperaba vlans.');
+
+	const vlans = [];
+	let tokenVlansPermitidas = null;
+	let esperaNumero = true;
+
+	while (!this.esTipoDetencion(this.tokenActual().tipo, this.obtenerTiposDetencionDentroDeBloque()) && !this.coincide('TK_FNA')) {
+		if (esperaNumero && this.coincide('TK_NUM')) {
+			const tokenNumero = this.avanzar();
+			vlans.push(tokenNumero.lexema);
+
+			if (!tokenVlansPermitidas) {
+				tokenVlansPermitidas = tokenNumero;
+			}
+
+			esperaNumero = false;
+			continue;
+		}
+
+		if (!esperaNumero && this.coincide('TK_COMA')) {
+			this.avanzar();
+			esperaNumero = true;
+			continue;
+		}
+
+		this.registrarError({
+			token: this.tokenActual(),
+			esperado: 'lista de VLANs separadas por coma',
+			descripcion: 'La lista de VLANs permitidas debe usar números separados por coma.',
+			sugerencia: sugerenciaBase
+		});
+		this.recuperarHastaSiguienteEstructura(this.obtenerTiposDetencionDentroDeBloque());
+		break;
+	}
+
+	if (tokenInterfaz) {
+		nodo.atributos.interfaz = tokenInterfaz.lexema;
+		nodo.tokenInterfaz = tokenInterfaz;
+		nodo.tokenReferencia = tokenInterfaz;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+	}
+
+	if (tokenVlanNativa) {
+		nodo.atributos.vlanNativa = tokenVlanNativa.lexema;
+		nodo.tokenVlanNativa = tokenVlanNativa;
+	} else {
+		nodo.atributos.vlanNativa = 'sin_vlan_nativa';
+	}
+
+	nodo.atributos.vlansPermitidas = vlans.join(',');
+	nodo.tokenVlansPermitidas = tokenVlansPermitidas;
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionAdministracionSwitch = function() {
+	const nodo = crearNodo('ConfiguracionAdministracionSwitch');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'administracion de switch',
+		patron: [
+			{ tipo: 'TK_RES_ADMINISTRACION' },
+			{ tipo: 'TK_RES_VLAN' },
+			{ tipo: 'TK_NUM', nombre: 'vlan' },
+			{ tipo: 'TK_RES_IP' },
+			{ tipo: 'TK_IP', nombre: 'ip' },
+			{ tipo: 'TK_MASK', nombre: 'mascara' },
+			{ tipo: 'TK_RES_GATEWAY' },
+			{ tipo: 'TK_IP', nombre: 'gateway' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La administración de SWITCH acepta vlan, ip, máscara y gateway en ese orden.',
+		sugerenciaBase: 'Usa el formato: administracion vlan 98 ip 180.10.4.2 /30 gateway 180.10.4.1.'
+	});
+
+	if (resultado.vlan) {
+		nodo.atributos.vlan = resultado.vlan.lexema;
+		nodo.tokenVlan = resultado.vlan;
+		nodo.tokenReferencia = resultado.vlan;
+	} else {
+		nodo.atributos.vlan = 'sin_vlan';
+	}
+
+	if (resultado.ip) {
+		nodo.atributos.ip = resultado.ip.lexema;
+		nodo.tokenIp = resultado.ip;
+	} else {
+		nodo.atributos.ip = 'sin_ip';
+	}
+
+	if (resultado.mascara) {
+		nodo.atributos.mascara = resultado.mascara.lexema;
+		nodo.tokenMascara = resultado.mascara;
+	} else {
+		nodo.atributos.mascara = 'sin_mascara';
+	}
+
+	if (resultado.gateway) {
+		nodo.atributos.gateway = resultado.gateway.lexema;
+		nodo.tokenGateway = resultado.gateway;
+	} else {
+		nodo.atributos.gateway = 'sin_gateway';
+	}
+
+	return nodo;
+};
+
+const obtenerClaseResaltadoTokenOriginalSemantica = obtenerClaseResaltadoToken;
+obtenerClaseResaltadoToken = function(tipoToken) {
+	if (tipoToken === 'TK_COMA') {
+		return 'token-simbolo-resaltado';
+	}
+
+	return obtenerClaseResaltadoTokenOriginalSemantica(tipoToken);
+};
 function analizarSemantico(arbol) {
 	const errores = [];
 
@@ -3625,6 +4087,13 @@ function analizarSemantico(arbol) {
 	validarDestinoPingInexistente(contexto, errores);
 	validarPingEntreDispositivosSinIp(contexto, errores);
 	validarMostrarRedesSinRedesConfiguradas(contexto, errores);
+	validarSubinterfazConVlanNoRelacionadaATroncal(contexto, errores);
+	validarVlanNativaInexistenteEnSwitch(contexto, errores);
+	validarVlanPermitidaInexistenteEnSwitch(contexto, errores);
+	validarHelperAddressApuntandoARouterInexistente(contexto, errores);
+	validarVlanAdministracionInexistenteEnSwitch(contexto, errores);
+	validarGatewayAdministracionSwitchFueraDeLaRed(contexto, errores);
+	validarGatewayAdministracionSwitchNoExisteEnTopologia(contexto, errores);
 
 	return { errores };
 }
@@ -4315,6 +4784,179 @@ function validarMostrarRedesSinRedesConfiguradas(contexto, errores) {
 			descripcion: 'Se pidió mostrar redes, pero no hay interfaces, administraciones o pools desde donde obtener redes.',
 			sugerencia: 'Configura al menos una interfaz con IP o un pool DHCP antes de usar mostrar redes.'
 		}));
+	}
+}
+
+//--23. Subinterfaz con VLAN no relacionada a troncal
+function validarSubinterfazConVlanNoRelacionadaATroncal(contexto, errores) {
+	for (const router of contexto.routers) {
+		const troncales = new Set();
+
+		for (const puertoTroncal of router.puertosTroncales) {
+			if (esValorValido(puertoTroncal.atributos.interfaz, 'sin_interfaz')) {
+				troncales.add(puertoTroncal.atributos.interfaz.toLowerCase());
+			}
+		}
+
+		for (const subpuerto of router.subpuertos) {
+			const interfazPadre = obtenerInterfazPadre(subpuerto.atributos.interfaz);
+
+			if (!troncales.has(interfazPadre.toLowerCase())) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Subinterfaz con VLAN no relacionada a troncal',
+					token: subpuerto.tokenInterfaz || subpuerto.tokenReferencia,
+					esperado: 'puerto padre declarado como troncal',
+					descripcion: `El subpuerto ${subpuerto.atributos.interfaz} usa VLAN ${subpuerto.atributos.vlan}, pero el puerto padre ${interfazPadre} no está declarado como troncal en el ROUTER ${router.nombre}.`,
+					sugerencia: `Agrega puerto ${interfazPadre} troncal antes de declarar subpuertos sobre esa interfaz.`
+				}));
+			}
+		}
+	}
+}
+
+//--24. VLAN nativa inexistente en switch
+function validarVlanNativaInexistenteEnSwitch(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const vlans = obtenerVlansSwitch(switchRegistro);
+
+		for (const troncal of switchRegistro.troncales) {
+			const vlanNativa = troncal.atributos.vlanNativa;
+
+			if (!esValorValido(vlanNativa, 'sin_vlan_nativa')) {
+				continue;
+			}
+
+			if (!vlans.has(vlanNativa)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'VLAN nativa inexistente en switch',
+					token: troncal.tokenVlanNativa || troncal.tokenReferencia,
+					esperado: 'VLAN nativa declarada en el switch',
+					descripcion: `La troncal ${troncal.atributos.interfaz} usa la VLAN nativa ${vlanNativa}, pero esa VLAN no fue declarada en el SWITCH ${switchRegistro.nombre}.`,
+					sugerencia: `Declara la VLAN ${vlanNativa} antes de usarla como nativa.`
+				}));
+			}
+		}
+	}
+}
+
+//--25. VLAN permitida inexistente en switch
+function validarVlanPermitidaInexistenteEnSwitch(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const vlans = obtenerVlansSwitch(switchRegistro);
+
+		for (const troncal of switchRegistro.troncales) {
+			const vlansPermitidas = obtenerListaVlansTroncal(troncal);
+
+			for (const vlan of vlansPermitidas) {
+				if (!vlans.has(vlan)) {
+					errores.push(crearErrorSemantico({
+						nombre: 'VLAN permitida inexistente en switch',
+						token: troncal.tokenVlansPermitidas || troncal.tokenReferencia,
+						esperado: 'VLAN permitida declarada en el switch',
+						descripcion: `La troncal ${troncal.atributos.interfaz} permite la VLAN ${vlan}, pero esa VLAN no fue declarada en el SWITCH ${switchRegistro.nombre}.`,
+						sugerencia: `Declara la VLAN ${vlan} o elimínala de la lista de VLANs permitidas.`
+					}));
+				}
+			}
+		}
+	}
+}
+
+//--26. Helper-address apuntando a un router inexistente
+function validarHelperAddressApuntandoARouterInexistente(contexto, errores) {
+	const ipsRouter = obtenerIpsRouter(contexto);
+
+	for (const router of contexto.routers) {
+		for (const interfaz of router.interfaces) {
+			const helper = interfaz.atributos.helper;
+
+			if (!helper) {
+				continue;
+			}
+
+			if (!ipsRouter.includes(helper)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Helper-address apuntando a un router inexistente',
+					token: interfaz.tokenHelper || interfaz.tokenReferencia,
+					esperado: 'helper hacia una IP de router existente',
+					descripcion: `El helper ${helper} de la interfaz ${interfaz.atributos.interfaz} no corresponde a ninguna IP de router declarada en la topología.`,
+					sugerencia: 'Corrige el helper para que apunte a una IP existente del router servidor DHCP.'
+				}));
+			}
+		}
+	}
+}
+
+//--27. VLAN de administración inexistente en switch
+function validarVlanAdministracionInexistenteEnSwitch(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		const vlans = obtenerVlansSwitch(switchRegistro);
+
+		for (const administracion of switchRegistro.administraciones) {
+			const vlan = administracion.atributos.vlan;
+
+			if (!esValorValido(vlan, 'sin_vlan')) {
+				continue;
+			}
+
+			if (!vlans.has(vlan)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'VLAN de administración inexistente en switch',
+					token: administracion.tokenVlan || administracion.tokenReferencia,
+					esperado: 'VLAN de administración declarada en el switch',
+					descripcion: `La administración del SWITCH ${switchRegistro.nombre} usa la VLAN ${vlan}, pero esa VLAN no fue declarada.`,
+					sugerencia: `Declara la VLAN ${vlan} antes de usarla para administración.`
+				}));
+			}
+		}
+	}
+}
+
+//--28. Gateway de administración del switch fuera de la red
+function validarGatewayAdministracionSwitchFueraDeLaRed(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		for (const administracion of switchRegistro.administraciones) {
+			const ip = administracion.atributos.ip;
+			const mascara = administracion.atributos.mascara;
+			const gateway = administracion.atributos.gateway;
+
+			if (!esValorValido(ip, 'sin_ip') || !esValorValido(mascara, 'sin_mascara') || !esValorValido(gateway, 'sin_gateway')) {
+				continue;
+			}
+
+			if (!ipPerteneceARed(gateway, ip, mascara)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Gateway de administración del switch fuera de la red',
+					token: administracion.tokenGateway || administracion.tokenReferencia,
+					esperado: 'gateway dentro de la red de administración',
+					descripcion: `El gateway ${gateway} no pertenece a la red de la IP administrativa ${ip}${mascara} del SWITCH ${switchRegistro.nombre}.`,
+					sugerencia: 'Usa un gateway que pertenezca a la misma red de administración del switch.'
+				}));
+			}
+		}
+	}
+}
+
+//--29. Gateway de administración del switch no existe en la topología
+function validarGatewayAdministracionSwitchNoExisteEnTopologia(contexto, errores) {
+	for (const switchRegistro of contexto.switches) {
+		for (const administracion of switchRegistro.administraciones) {
+			const gateway = administracion.atributos.gateway;
+
+			if (!esValorValido(gateway, 'sin_gateway')) {
+				continue;
+			}
+
+			if (!buscarRouterPorIp(contexto, gateway)) {
+				errores.push(crearErrorSemantico({
+					nombre: 'Gateway de administración del switch no existe en la topología',
+					token: administracion.tokenGateway || administracion.tokenReferencia,
+					esperado: 'gateway configurado como IP de router',
+					descripcion: `El gateway de administración ${gateway} del SWITCH ${switchRegistro.nombre} no está configurado en ningún router de la topología.`,
+					sugerencia: `Configura ${gateway} en una interfaz o subinterfaz de router.`
+				}));
+			}
+		}
 	}
 }
 

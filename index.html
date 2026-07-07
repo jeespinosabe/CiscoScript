@@ -108,8 +108,27 @@
 			</section>
 
 			<section class="panel panel-arbol">
-				<h2>Árbol de sintaxis abstracta</h2>
-				<pre id="salidaArbol" class="salida-arbol">Sin árbol generado.</pre>
+				<div class="encabezado-salida-analisis">
+					<div>
+						<h2>Salida del análisis</h2>
+						<p>Consulta el árbol sintáctico o las reglas semánticas ejecutadas.</p>
+					</div>
+
+					<div class="pestanas-salida" role="tablist" aria-label="Salida del análisis">
+						<button id="botonPestanaArbol" class="boton-pestana-salida activo" type="button" role="tab" aria-selected="true" aria-controls="panelSalidaArbol">Árbol AST</button>
+						<button id="botonPestanaSemantica" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaSemantica">Semántica</button>
+					</div>
+				</div>
+
+				<div id="panelSalidaArbol" class="contenido-pestana-salida" role="tabpanel" aria-labelledby="botonPestanaArbol">
+					<h3>Árbol de sintaxis abstracta</h3>
+					<pre id="salidaArbol" class="salida-arbol">Sin árbol generado.</pre>
+				</div>
+
+				<div id="panelSalidaSemantica" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaSemantica">
+					<h3>Reglas semánticas ejecutadas</h3>
+					<pre id="salidaReglasSemanticas" class="salida-arbol salida-reglas-semanticas">Sin reglas semánticas ejecutadas.</pre>
+				</div>
 			</section>
 
 			<footer class="pie">

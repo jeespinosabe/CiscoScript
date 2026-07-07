@@ -504,6 +504,45 @@ tr:hover td {
 	padding: 18px;
 }
 
+.encabezado-salida-analisis {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 18px;
+}
+
+.pestanas-salida {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.boton-pestana-salida {
+	background: #e2e8f0;
+	color: #334155;
+	border: 1px solid #cbd5e1;
+}
+
+.boton-pestana-salida:hover {
+	background: #dbeafe;
+	color: #1d4ed8;
+}
+
+.boton-pestana-salida.activo {
+	background: var(--primario);
+	color: #ffffff;
+	border-color: var(--primario);
+}
+
+.contenido-pestana-salida.oculto {
+	display: none;
+}
+
+.salida-reglas-semanticas {
+	min-height: 240px;
+}
+
 .salida-arbol {
 	margin: 14px 0 0;
 	padding: 16px;
@@ -566,6 +605,18 @@ tr:hover td {
 
 	.acciones {
 		width: 100%;
+	}
+
+	.encabezado-salida-analisis {
+		flex-direction: column;
+	}
+
+	.pestanas-salida {
+		width: 100%;
+	}
+
+	.boton-pestana-salida {
+		flex: 1;
 	}
 
 	button {

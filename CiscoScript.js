@@ -6,6 +6,11 @@ const contenedorErrores = document.querySelector('#contenedorErrores');
 const contenedorSugerencias = document.querySelector('#contenedorSugerencias');
 const resumenAnalisis = document.querySelector('#resumenAnalisis');
 const salidaArbol = document.querySelector('#salidaArbol');
+const salidaReglasSemanticas = document.querySelector('#salidaReglasSemanticas');
+const botonPestanaArbol = document.querySelector('#botonPestanaArbol');
+const botonPestanaSemantica = document.querySelector('#botonPestanaSemantica');
+const panelSalidaArbol = document.querySelector('#panelSalidaArbol');
+const panelSalidaSemantica = document.querySelector('#panelSalidaSemantica');
 const botonEjemplo = document.querySelector('#botonEjemplo');
 const botonLimpiar = document.querySelector('#botonLimpiar');
 const contenedorAutocompletado = document.querySelector('#contenedorAutocompletado');
@@ -76,6 +81,7 @@ const descripcionesTokens = {
 	TK_IP: 'Dirección IPv4',
 	TK_MASK: 'Máscara CIDR',
 	TK_NUM: 'Número entero',
+	TK_DOMINIO: 'Dominio',
 	TK_DOSP: 'Símbolo',
 	TK_COMENTARIO: 'Comentario',
 	TK_FNA: 'Fin de archivo',
@@ -112,6 +118,7 @@ const lexemasEsperados = {
 	TK_IP: 'una dirección IP, por ejemplo 192.168.1.1',
 	TK_MASK: 'una máscara, por ejemplo /24',
 	TK_NUM: 'un número entero',
+	TK_DOMINIO: 'un dominio, por ejemplo cisco.com',
 	TK_DOSP: ':',
 	TK_FNA: 'fin de archivo'
 };
@@ -158,15 +165,18 @@ const sugerenciasBase = [
 	{ texto: 'admin', detalle: 'identificador' },
 	{ texto: 'cisco123', detalle: 'identificador' },
 	{ texto: 'redlocal', detalle: 'identificador' },
+	{ texto: 'cisco.com', detalle: 'dominio ejemplo' },
 	{ texto: 'Ventas', detalle: 'identificador' },
 	{ texto: ':', detalle: 'símbolo' }
 ];
 
 //estas son las expresiones regulares
 //REG TK_IFACE
-const expresionInterfaz = /^(fa|Fa|g|Gi|s|Se)\d+\/\d+(\/\d+)?(\.\d+)?$/;
+const expresionInterfaz = /^((fa|Fa|g|Gi|s|Se)\d+\/\d+(\/\d+)?(\.\d+)?|(fa|Fa|g|Gi)\d+\/\d+-\d+)$/;
 //REG TK_IP
 const expresionIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+//REG TK_DOMINIO
+const expresionDominio = /^[a-zA-Z0-9]([a-zA-Z0-9_-]*\.)+[a-zA-Z]{2,}$/;
 //REG TK_MASK
 const expresionMascara = /^\/([0-9]|[1-2][0-9]|3[0-2])$/;
 //REG TK_NUM
@@ -176,23 +186,26 @@ const expresionIdentificador = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 //REG TK_ERROR
 const expresionCaracterValido = /[a-zA-Z0-9 \t\r\n.\/:,_-]/;
 
-const codigoEjemplo = `router R1:
+const codigoEjemplo = `ROUTER R1:
 	basica
 	hostname R1
-	ssh usuario admin password cisco123 dominio redlocal
+	ssh usuario admin password cisco123 dominio cisco.com
 	puerto g0/0 ip 192.168.1.1 /24
-	pool LAN1 red 192.168.1.0 /24 gateway 192.168.1.1 dns 8.8.8.8
 	excluir 192.168.1.1 192.168.1.10
+	pool LAN1 red 192.168.1.0 /24 gateway 192.168.1.1 dns 8.8.8.8
 fin
 
-switch S1:
+SWITCH S1:
 	basica
 	hostname S1
-	vlan 10 nombre Ventas
-	puerto fa0/1 acceso 10
+	ssh usuario admin password cisco123 dominio cisco.com
+	vlan 1 nombre ADMIN
+	vlan 10 nombre VENTAS
+	administracion vlan 1 ip 192.168.1.2 /24 gateway 192.168.1.1
+	puerto fa0/1-5, g0/2 acceso 10
 fin
 
-probar ping PC1 PC2
+probar ping R1 S1
 mostrar redes
 verificar`;
 
@@ -259,6 +272,33 @@ document.addEventListener('click', (evento) => {
 	}
 });
 
+if (botonPestanaArbol && botonPestanaSemantica) {
+	botonPestanaArbol.addEventListener('click', () => cambiarPestanaSalida('arbol'));
+	botonPestanaSemantica.addEventListener('click', () => cambiarPestanaSalida('semantica'));
+}
+
+function cambiarPestanaSalida(pestanaActiva) {
+	const mostrarArbol = pestanaActiva === 'arbol';
+
+	if (botonPestanaArbol) {
+		botonPestanaArbol.classList.toggle('activo', mostrarArbol);
+		botonPestanaArbol.setAttribute('aria-selected', String(mostrarArbol));
+	}
+
+	if (botonPestanaSemantica) {
+		botonPestanaSemantica.classList.toggle('activo', !mostrarArbol);
+		botonPestanaSemantica.setAttribute('aria-selected', String(!mostrarArbol));
+	}
+
+	if (panelSalidaArbol) {
+		panelSalidaArbol.classList.toggle('oculto', !mostrarArbol);
+	}
+
+	if (panelSalidaSemantica) {
+		panelSalidaSemantica.classList.toggle('oculto', mostrarArbol);
+	}
+}
+
 function manejarTecladoEditor(evento) {
 	if (estadoAutocompletado.visible) {
 		if (evento.key === 'Tab') {
@@ -308,34 +348,6 @@ function sincronizarDesplazamiento() {
 	capaResaltado.scrollTop = entradaCodigo.scrollTop;
 	capaResaltado.scrollLeft = entradaCodigo.scrollLeft;
 	numerosRenglon.scrollTop = entradaCodigo.scrollTop;
-}
-
-function analizarCodigo() {
-	const texto = entradaCodigo.value;
-	const resultadoLexico = analizarLexico(texto);
-	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
-	const resultadoRepeticion = resultadoSintactico.arbol
-		? analizarRepeticiones(resultadoSintactico.arbol)
-		: { errores: [] };
-
-	const errores = [
-		...resultadoLexico.errores,
-		...resultadoSintactico.errores,
-		...resultadoRepeticion.errores
-	];
-	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
-	const hayErrores = errores.length > 0;
-
-	actualizarNumerosRenglon(texto);
-	actualizarResaltado(texto, errores, resultadoLexico.tokens);
-	mostrarTokens(tokensParaTabla);
-	mostrarErrores(errores);
-	mostrarSugerencias(errores);
-	mostrarResumen(tokensParaTabla, errores);
-	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
-	actualizarAutocompletado();
-
-	sincronizarDesplazamiento();
 }
 
 //AFD 1 General
@@ -591,6 +603,10 @@ function clasificarLexemaTexto(lexema) {
 
 	if (reservadaExacta) {
 		return reservadaExacta.token;
+	}
+
+	if (expresionDominio.test(lexema)) {
+		return 'TK_DOMINIO';
 	}
 
 	if (obtenerReservadaPegada(lexema)) {
@@ -1325,11 +1341,11 @@ class AnalizadorSintactico {
 				{ tipo: 'TK_RES_PASSWORD' },
 				{ tipo: 'TK_ID', nombre: 'password' },
 				{ tipo: 'TK_RES_DOMINIO' },
-				{ tipo: 'TK_ID', nombre: 'dominio' }
+				{ tipo: 'TK_DOMINIO', nombre: 'dominio' }
 			],
 			tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
 			descripcionBase: 'La instrucción ssh solo acepta usuario, password y dominio en ese orden.',
-			sugerenciaBase: 'Usa el formato: ssh usuario admin password cisco123 dominio redlocal.'
+			sugerenciaBase: 'Usa el formato: ssh usuario admin password cisco123 dominio cisco.com.'
 		});
 
 		if (resultado.usuario) {
@@ -1643,6 +1659,7 @@ class AnalizadorSintactico {
 					nombreEstructura: datos.nombreEstructura,
 					tiposConsumidos,
 					tiposPatron,
+					patron: datos.patron,
 					descripcionBase: datos.descripcionBase
 				}),
 				sugerencia: datos.sugerenciaBase
@@ -2297,6 +2314,24 @@ function mostrarArbol(arbol) {
 	salidaArbol.textContent = convertirArbolTexto(arbol);
 }
 
+function mostrarReglasSemanticas(reglasEjecutadas) {
+	if (!salidaReglasSemanticas) {
+		return;
+	}
+
+	if (!entradaCodigo.value.trim()) {
+		salidaReglasSemanticas.textContent = 'Sin reglas semánticas ejecutadas.';
+		return;
+	}
+
+	if (!reglasEjecutadas.length) {
+		salidaReglasSemanticas.textContent = 'No se ejecutaron reglas semánticas porque no hay estructuras válidas para analizar.';
+		return;
+	}
+
+	salidaReglasSemanticas.textContent = reglasEjecutadas.join('\n');
+}
+
 function convertirArbolTexto(nodo, nivel = 0) {
 	const tabulacion = '\t'.repeat(nivel);
 	let resultado = `${tabulacion}${nodo.tipo}\n`;
@@ -2516,7 +2551,7 @@ function obtenerCandidatosDentroDeRouter(tokensAntes) {
 				{ tipo: 'TK_RES_PASSWORD', candidatos: ['password'] },
 				{ tipo: 'TK_ID', candidatos: ['cisco123'] },
 				{ tipo: 'TK_RES_DOMINIO', candidatos: ['dominio'] },
-				{ tipo: 'TK_ID', candidatos: ['redlocal'] }
+				{ tipo: 'TK_DOMINIO', candidatos: ['cisco.com'] }
 			],
 			despues: candidatosInicio
 		},
@@ -2595,7 +2630,7 @@ function obtenerCandidatosDentroDeSwitch(tokensAntes) {
 				{ tipo: 'TK_RES_PASSWORD', candidatos: ['password'] },
 				{ tipo: 'TK_ID', candidatos: ['cisco123'] },
 				{ tipo: 'TK_RES_DOMINIO', candidatos: ['dominio'] },
-				{ tipo: 'TK_ID', candidatos: ['redlocal'] }
+				{ tipo: 'TK_DOMINIO', candidatos: ['cisco.com'] }
 			],
 			despues: candidatosInicio
 		},
@@ -2983,7 +3018,7 @@ function analizarCodigo() {
 	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
 	const resultadoSemantico = resultadoSintactico.arbol
 		? analizarSemantico(resultadoSintactico.arbol)
-		: { errores: [] };
+		: { errores: [], reglasEjecutadas: [] };
 
 	const errores = [
 		...resultadoLexico.errores,
@@ -3000,6 +3035,7 @@ function analizarCodigo() {
 	mostrarSugerencias(errores);
 	mostrarResumen(tokensParaTabla, errores);
 	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
+	mostrarReglasSemanticas(resultadoSemantico.reglasEjecutadas || []);
 	actualizarAutocompletado();
 
 	sincronizarDesplazamiento();
@@ -3224,34 +3260,71 @@ AnalizadorSintactico.prototype.analizarConfiguracionVlan = function() {
 
 AnalizadorSintactico.prototype.analizarConfiguracionPuertoSwitch = function() {
 	const nodo = crearNodo('ConfiguracionPuertoSwitch');
-	const resultado = this.validarPatronFlexible({
-		nombreEstructura: 'puerto de switch',
-		patron: [
-			{ tipo: 'TK_RES_PUERTO' },
-			{ tipo: 'TK_IFACE', nombre: 'interfaz' },
-			{ tipo: 'TK_RES_ACCESO' },
-			{ tipo: 'TK_NUM', nombre: 'vlan' }
-		],
-		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
-		descripcionBase: 'La configuración de puerto en SWITCH solo acepta interfaz, acceso y número de VLAN en ese orden.',
-		sugerenciaBase: 'Usa el formato: puerto fa0/1 acceso 10.'
-	});
+	const sugerenciaBase = 'Usa el formato: puerto fa0/1 acceso 10 o puerto fa0/3-24, g0/2 acceso 1000.';
+	const interfaces = [];
+	let tokenInterfazPrincipal = null;
+	let esperaInterfaz = true;
 
-	if (resultado.interfaz) {
-		nodo.atributos.interfaz = resultado.interfaz.lexema;
-		nodo.tokenReferencia = resultado.interfaz;
-		nodo.tokenInterfaz = resultado.interfaz;
-	} else {
-		nodo.atributos.interfaz = 'sin_interfaz';
+	this.consumir('TK_RES_PUERTO', 'La configuración de puerto de switch debe iniciar con puerto.');
+
+	while (
+		!this.coincide('TK_RES_ACCESO') &&
+		!this.esTipoDetencion(this.tokenActual().tipo, this.obtenerTiposDetencionDentroDeBloque()) &&
+		!this.coincide('TK_FNA')
+	) {
+		if (esperaInterfaz && this.coincide('TK_IFACE')) {
+			const tokenInterfaz = this.avanzar();
+			interfaces.push(tokenInterfaz);
+
+			if (!tokenInterfazPrincipal) {
+				tokenInterfazPrincipal = tokenInterfaz;
+			}
+
+			esperaInterfaz = false;
+			continue;
+		}
+
+		if (!esperaInterfaz && this.coincide('TK_COMA')) {
+			this.avanzar();
+			esperaInterfaz = true;
+			continue;
+		}
+
+		this.registrarError({
+			token: this.tokenActual(),
+			esperado: 'lista de interfaces de switch',
+			descripcion: 'La lista de interfaces del puerto de SWITCH debe usar interfaces válidas separadas por coma.',
+			sugerencia: sugerenciaBase
+		});
+		this.recuperarHastaSiguienteEstructura(this.obtenerTiposDetencionDentroDeBloque());
+		break;
 	}
 
-	if (resultado.vlan) {
-		nodo.atributos.vlan = resultado.vlan.lexema;
-		nodo.tokenVlan = resultado.vlan;
+	this.consumir('TK_RES_ACCESO', 'Después de la interfaz o lista de interfaces se esperaba acceso.');
+	const tokenVlan = this.consumir('TK_NUM', 'Después de acceso se esperaba el número de VLAN.');
+
+	if (interfaces.length) {
+		const interfacesTexto = interfaces.map(function(token) {
+			return token.lexema;
+		});
+
+		nodo.atributos.interfaz = interfacesTexto.join(', ');
+		nodo.atributos.interfaces = expandirListaInterfacesSwitch(interfacesTexto);
+		nodo.tokenReferencia = tokenInterfazPrincipal;
+		nodo.tokenInterfaz = tokenInterfazPrincipal;
+	} else {
+		nodo.atributos.interfaz = 'sin_interfaz';
+		nodo.atributos.interfaces = [];
+	}
+
+	if (tokenVlan) {
+		nodo.atributos.vlan = tokenVlan.lexema;
+		nodo.tokenVlan = tokenVlan;
 	} else {
 		nodo.atributos.vlan = 'sin_vlan';
 	}
 
+	this.validarFinInstruccionExtendida('puerto de switch', sugerenciaBase);
 	return nodo;
 };
 
@@ -3593,6 +3666,60 @@ function obtenerListaVlansTroncal(troncal) {
 
 function obtenerInterfazPadre(interfaz) {
 	return String(interfaz || '').split('.')[0];
+}
+
+function expandirListaInterfacesSwitch(interfacesTexto) {
+	const interfaces = [];
+
+	for (const interfazTexto of interfacesTexto) {
+		const interfacesExpandidas = expandirInterfazSwitch(interfazTexto);
+
+		for (const interfazExpandida of interfacesExpandidas) {
+			interfaces.push(interfazExpandida);
+		}
+	}
+
+	return interfaces;
+}
+
+function expandirInterfazSwitch(interfaz) {
+	const coincidencia = String(interfaz || '').match(/^((fa|Fa|g|Gi)\d+\/)(\d+)-(\d+)$/);
+
+	if (!coincidencia) {
+		return [interfaz];
+	}
+
+	const prefijo = coincidencia[1];
+	const inicio = Number(coincidencia[3]);
+	const fin = Number(coincidencia[4]);
+
+	if (inicio > fin) {
+		return [interfaz];
+	}
+
+	const interfaces = [];
+
+	for (let numero = inicio; numero <= fin; numero++) {
+		interfaces.push(`${prefijo}${numero}`);
+	}
+
+	return interfaces;
+}
+
+function obtenerInterfacesConfiguracionSwitch(configuracionInterfaz) {
+	if (!configuracionInterfaz || !configuracionInterfaz.atributos) {
+		return [];
+	}
+
+	if (Array.isArray(configuracionInterfaz.atributos.interfaces)) {
+		return configuracionInterfaz.atributos.interfaces;
+	}
+
+	if (!esValorValido(configuracionInterfaz.atributos.interfaz, 'sin_interfaz')) {
+		return [];
+	}
+
+	return expandirInterfazSwitch(configuracionInterfaz.atributos.interfaz);
 }
 
 
@@ -4056,14 +4183,170 @@ obtenerClaseResaltadoToken = function(tipoToken) {
 
 	return obtenerClaseResaltadoTokenOriginalSemantica(tipoToken);
 };
+function generarReglasSemanticasEjecutadas(contexto) {
+	const reglas = [];
+	let paso = 0;
+
+	function agregarRegla(descripcion, nivel = 0) {
+		paso++;
+		const tabulacion = '\t'.repeat(nivel);
+		reglas.push(`${tabulacion}p${paso} ${descripcion}`);
+	}
+
+	agregarRegla('Programa.sem = iniciarAnalisisSemantico()');
+
+	for (const dispositivo of contexto.dispositivos) {
+		agregarRegla(`Dispositivo.lexema=${dispositivo.tipoDispositivo}<${dispositivo.nombre}>; insertar(${dispositivo.nombre}) en tablaDispositivos`, 1);
+
+		const instrucciones = Array.isArray(dispositivo.nodo.hijos) ? dispositivo.nodo.hijos : [];
+
+		for (const instruccion of instrucciones) {
+			if (instruccion.tipo === 'ConfiguracionBasica') {
+				agregarRegla(`${dispositivo.nombre}.basica=true; generarConfiguracionBasica(${dispositivo.nombre})`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionHostname') {
+				agregarRegla(`${dispositivo.nombre}.hostname=${instruccion.atributos.nombre}; validarHostname(${instruccion.atributos.nombre})`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionSsh') {
+				agregarRegla(`${dispositivo.nombre}.ssh={usuario:${instruccion.atributos.usuario}, dominio:${instruccion.atributos.dominio}}; validarCredencialesSsh()`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPuertoRouter') {
+				if (instruccion.atributos.modo === 'troncal') {
+					agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.modo=troncal; registrarPuertoTroncalRouter()`, 2);
+					continue;
+				}
+
+				if (instruccion.atributos.modo === 'sin_ip') {
+					agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.ip=null; registrarPuertoSinIp()`, 2);
+					continue;
+				}
+
+				agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.red=calcularRed(${instruccion.atributos.ip}, ${instruccion.atributos.mascara}); validarIpInterfazRouter()`, 2);
+
+				if (instruccion.atributos.helper) {
+					agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.helper=${instruccion.atributos.helper}; validarHelperAddress()`, 3);
+				}
+
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionSubpuertoRouter') {
+				if (instruccion.atributos.modo === 'nativa') {
+					agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.vlanNativa=${instruccion.atributos.vlan}; validarSubpuertoNativo()`, 2);
+					continue;
+				}
+
+				agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.encapsulation=dot1q(${instruccion.atributos.vlan}); calcularRedSubpuerto(${instruccion.atributos.ip}, ${instruccion.atributos.mascara})`, 2);
+
+				if (instruccion.atributos.helper) {
+					agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.helper=${instruccion.atributos.helper}; validarHelperAddress()`, 3);
+				}
+
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPoolDhcp') {
+				agregarRegla(`${dispositivo.nombre}.pool[${instruccion.atributos.nombre}].red=${instruccion.atributos.red}${instruccion.atributos.mascara}; validarPoolDhcp()`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionExcluirIp') {
+				agregarRegla(`${dispositivo.nombre}.excluir=${instruccion.atributos.ipInicial}-${instruccion.atributos.ipFinal}; validarRangoExclusion()`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionVlan') {
+				agregarRegla(`${dispositivo.nombre}.vlan[${instruccion.atributos.numero}]=${instruccion.atributos.nombre}; insertarVlan(${instruccion.atributos.numero})`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPuertoSwitch') {
+				const interfaces = obtenerInterfacesConfiguracionSwitch(instruccion).join(', ');
+				agregarRegla(`${dispositivo.nombre}.puertosAcceso={${interfaces}} -> vlan ${instruccion.atributos.vlan}; validarVlanAcceso()`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionTroncalSwitch') {
+				agregarRegla(`${dispositivo.nombre}.${instruccion.atributos.interfaz}.troncal={nativa:${instruccion.atributos.vlanNativa}, permitidas:${instruccion.atributos.vlansPermitidas}}; validarTroncal()`, 2);
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionAdministracionSwitch') {
+				agregarRegla(`${dispositivo.nombre}.administracion=vlan ${instruccion.atributos.vlan}, ip ${instruccion.atributos.ip}${instruccion.atributos.mascara}; validarGatewayAdministracion()`, 2);
+			}
+		}
+	}
+
+	if (contexto.dispositivos.length > 0) {
+		agregarRegla('validacionesGlobales(tablaDispositivos, routers, switches)', 1);
+		agregarRegla('validarIdentificadoresDispositivosUnicos(tablaDispositivos)', 2);
+	}
+
+	if (contexto.routers.length > 0) {
+		agregarRegla('validacionesRouters(routers)', 1);
+		agregarRegla('validarInterfacesRouterRepetidas(routers)', 2);
+		agregarRegla('validarDireccionesIpDuplicadas(interfacesRouter, administracionesSwitch)', 2);
+		agregarRegla('validarRedesTraslapadasEnInterfacesRouter(routers)', 2);
+	}
+
+	if (contexto.switches.length > 0) {
+		agregarRegla('validacionesSwitches(switches)', 1);
+		agregarRegla('validarInterfacesSwitchRepetidas(switches)', 2);
+		agregarRegla('validarVlansDuplicadas(switches)', 2);
+	}
+
+	if (contexto.routers.some(router => router.pools.length > 0)) {
+		agregarRegla('validacionesDhcp(routers)', 1);
+		agregarRegla('validarPoolsDhcp(routers): gateway, red base, helper y relación con interfaz', 2);
+	}
+
+	if (contexto.routers.some(router => router.exclusiones.length > 0)) {
+		agregarRegla('validarExclusionesDhcp(routers): rango dentro del pool, repetido, cruzado o invertido', 2);
+	}
+
+	if (contexto.switches.some(switchRegistro => switchRegistro.puertosAcceso.length > 0)) {
+		agregarRegla('validarPuertosAccesoContraVlansDeclaradas(switches)', 2);
+	}
+
+	if (contexto.switches.some(switchRegistro => switchRegistro.troncales.length > 0) || contexto.routers.some(router => router.subpuertos.length > 0)) {
+		agregarRegla('validacionesTroncales(routerOnAStick)', 1);
+		agregarRegla('validarRelacionTroncalSubpuertos(routerOnAStick)', 2);
+	}
+
+	if (contexto.switches.some(switchRegistro => switchRegistro.administraciones.length > 0)) {
+		agregarRegla('validacionesAdministracionSwitch(switches)', 1);
+		agregarRegla('validarAdministracionSwitch(switches): vlan, gateway y red de administración', 2);
+	}
+
+	for (const ping of contexto.pings) {
+		agregarRegla(`sentenciaPing(origen:${ping.atributos.origen}, destino:${ping.atributos.destino})`, 1);
+		agregarRegla(`validarPing(origen:${ping.atributos.origen}, destino:${ping.atributos.destino})`, 2);
+	}
+
+	if (contexto.mostrarRedes.length > 0) {
+		agregarRegla('sentenciaMostrarRedes()', 1);
+		agregarRegla('mostrarRedes=construirResumenRedes(interfaces, pools, administraciones)', 2);
+	}
+
+	return reglas;
+}
+
 function analizarSemantico(arbol) {
 	const errores = [];
+	const reglasEjecutadas = [];
 
 	if (!arbol || !Array.isArray(arbol.hijos)) {
-		return { errores };
+		return { errores, reglasEjecutadas };
 	}
 
 	const contexto = crearContextoSemantico(arbol);
+	reglasEjecutadas.push(...generarReglasSemanticasEjecutadas(contexto));
 
 	validarIdentificadorDispositivoDuplicado(contexto, errores);
 	validarInterfazRouterRepetida(contexto, errores);
@@ -4095,7 +4378,7 @@ function analizarSemantico(arbol) {
 	validarGatewayAdministracionSwitchFueraDeLaRed(contexto, errores);
 	validarGatewayAdministracionSwitchNoExisteEnTopologia(contexto, errores);
 
-	return { errores };
+	return { errores, reglasEjecutadas };
 }
 
 //--1. Identificador de dispositivo duplicado
@@ -4159,25 +4442,25 @@ function validarInterfazSwitchRepetida(contexto, errores) {
 		const interfaces = new Map();
 		const interfacesSwitch = switchRegistro.puertosAcceso.concat(switchRegistro.troncales);
 
-		for (const interfaz of interfacesSwitch) {
-			if (!esValorValido(interfaz.atributos.interfaz, 'sin_interfaz')) {
-				continue;
+		for (const configuracionInterfaz of interfacesSwitch) {
+			const interfacesConfiguradas = obtenerInterfacesConfiguracionSwitch(configuracionInterfaz);
+
+			for (const nombreInterfaz of interfacesConfiguradas) {
+				const clave = nombreInterfaz.toLowerCase();
+
+				if (interfaces.has(clave)) {
+					errores.push(crearErrorSemantico({
+						nombre: 'Interfaz de switch repetida',
+						token: configuracionInterfaz.tokenInterfaz || configuracionInterfaz.tokenReferencia,
+						esperado: 'interfaz de switch no repetida',
+						descripcion: `La interfaz ${nombreInterfaz} ya fue configurada en el SWITCH ${switchRegistro.nombre}.`,
+						sugerencia: `Usa otro puerto o elimina la configuración repetida de ${nombreInterfaz}.`
+					}));
+					continue;
+				}
+
+				interfaces.set(clave, configuracionInterfaz);
 			}
-
-			const clave = interfaz.atributos.interfaz.toLowerCase();
-
-			if (interfaces.has(clave)) {
-				errores.push(crearErrorSemantico({
-					nombre: 'Interfaz de switch repetida',
-					token: interfaz.tokenInterfaz || interfaz.tokenReferencia,
-					esperado: 'interfaz de switch no repetida',
-					descripcion: `La interfaz ${interfaz.atributos.interfaz} ya fue configurada en el SWITCH ${switchRegistro.nombre}.`,
-					sugerencia: `Usa otro puerto o elimina la configuración repetida de ${interfaz.atributos.interfaz}.`
-				}));
-				continue;
-			}
-
-			interfaces.set(clave, interfaz);
 		}
 	}
 }

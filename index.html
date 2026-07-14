@@ -111,11 +111,14 @@
 				<div class="encabezado-salida-analisis">
 					<div>
 						<h2>Salida del análisis</h2>
-						<p>Consulta el árbol sintáctico o las reglas semánticas ejecutadas.</p>
+					
 					</div>
 
 					<div class="pestanas-salida" role="tablist" aria-label="Salida del análisis">
 						<button id="botonPestanaArbol" class="boton-pestana-salida activo" type="button" role="tab" aria-selected="true" aria-controls="panelSalidaArbol">Árbol AST</button>
+						<button id="botonPestanaRecorridos" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaRecorridos">Recorridos</button>
+						<button id="botonPestanaCodigoTresDirecciones" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaCodigoTresDirecciones">Código 3 direcciones</button>
+						<button id="botonPestanaTablaSimbolos" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaTablaSimbolos">Tabla de símbolos</button>
 						<button id="botonPestanaSemantica" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaSemantica">Semántica</button>
 					</div>
 				</div>
@@ -125,12 +128,63 @@
 					<pre id="salidaArbol" class="salida-arbol">Sin árbol generado.</pre>
 				</div>
 
+				<div id="panelSalidaRecorridos" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaRecorridos">
+					<h3>Recorridos del AST</h3>
+					
+					<div class="rejilla-recorridos">
+						<article class="tarjeta-recorrido">
+							<h4>PreOrden</h4>
+							<pre id="salidaPreOrden" class="salida-arbol salida-recorrido">Sin recorrido generado.</pre>
+						</article>
+
+						<article class="tarjeta-recorrido">
+							<h4>InOrden adaptado</h4>
+							<pre id="salidaInOrden" class="salida-arbol salida-recorrido">Sin recorrido generado.</pre>
+						</article>
+
+						<article class="tarjeta-recorrido">
+							<h4>PostOrden</h4>
+							<pre id="salidaPostOrden" class="salida-arbol salida-recorrido">Sin recorrido generado.</pre>
+						</article>
+					</div>
+				</div>
+
+				<div id="panelSalidaCodigoTresDirecciones" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaCodigoTresDirecciones">
+					<h3>Código intermedio de tres direcciones</h3>
+					
+					<pre id="salidaCodigoTresDirecciones" class="salida-arbol salida-codigo-tres-direcciones">Sin código intermedio generado.</pre>
+				</div>
+
+				<div id="panelSalidaTablaSimbolos" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaTablaSimbolos">
+					<h3>Tabla de símbolos</h3>
+
+					<div class="tabla-contenedor tabla-simbolos-contenedor">
+						<table>
+							<thead>
+								<tr>
+									<th>#</th>
+									<th>Nombre del símbolo</th>
+									<th>Tipo</th>
+									<th>Valor</th>
+									<th>Ámbito</th>
+									<th>Renglón</th>
+									<th>Columna</th>
+								</tr>
+							</thead>
+							<tbody id="cuerpoTablaSimbolos">
+								<tr>
+									<td colspan="7" class="celda-vacia">No hay símbolos para mostrar.</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+
 				<div id="panelSalidaSemantica" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaSemantica">
 					<h3>Reglas semánticas ejecutadas</h3>
 					<pre id="salidaReglasSemanticas" class="salida-arbol salida-reglas-semanticas">Sin reglas semánticas ejecutadas.</pre>
 				</div>
 			</section>
-
 			<footer class="pie">
 				<p>CiscoScript — Proyecto de Lenguajes y Autómatas II</p>
 			</footer>

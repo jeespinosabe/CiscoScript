@@ -5243,4 +5243,844 @@ function validarGatewayAdministracionSwitchNoExisteEnTopologia(contexto, errores
 	}
 }
 
+
+// A partir de aquí empieza lo de los recorridos, talba de simbolos y codigo 3 direcciones
+
+const botonPestanaRecorridos = document.querySelector('#botonPestanaRecorridos');
+const panelSalidaRecorridos = document.querySelector('#panelSalidaRecorridos');
+const salidaPreOrden = document.querySelector('#salidaPreOrden');
+const salidaInOrden = document.querySelector('#salidaInOrden');
+const salidaPostOrden = document.querySelector('#salidaPostOrden');
+const botonPestanaCodigoTresDirecciones = document.querySelector('#botonPestanaCodigoTresDirecciones');
+const panelSalidaCodigoTresDirecciones = document.querySelector('#panelSalidaCodigoTresDirecciones');
+const salidaCodigoTresDirecciones = document.querySelector('#salidaCodigoTresDirecciones');
+const botonPestanaTablaSimbolos = document.querySelector('#botonPestanaTablaSimbolos');
+const panelSalidaTablaSimbolos = document.querySelector('#panelSalidaTablaSimbolos');
+const cuerpoTablaSimbolos = document.querySelector('#cuerpoTablaSimbolos');
+
+cambiarPestanaSalida = function(pestanaActiva) {
+	const pestanas = [
+		{ nombre: 'arbol', boton: botonPestanaArbol, panel: panelSalidaArbol },
+		{ nombre: 'recorridos', boton: botonPestanaRecorridos, panel: panelSalidaRecorridos },
+		{ nombre: 'codigoTresDirecciones', boton: botonPestanaCodigoTresDirecciones, panel: panelSalidaCodigoTresDirecciones },
+		{ nombre: 'tablaSimbolos', boton: botonPestanaTablaSimbolos, panel: panelSalidaTablaSimbolos },
+		{ nombre: 'semantica', boton: botonPestanaSemantica, panel: panelSalidaSemantica },
+	];
+
+	for (const pestana of pestanas) {
+		const estaActiva = pestana.nombre === pestanaActiva;
+
+		if (pestana.boton) {
+			pestana.boton.classList.toggle('activo', estaActiva);
+			pestana.boton.setAttribute('aria-selected', String(estaActiva));
+		}
+
+		if (pestana.panel) {
+			pestana.panel.classList.toggle('oculto', !estaActiva);
+		}
+	}
+};
+
+botonPestanaRecorridos.addEventListener('click', () => cambiarPestanaSalida('recorridos'));
+
+botonPestanaCodigoTresDirecciones.addEventListener('click', () => cambiarPestanaSalida('codigoTresDirecciones'));
+
+botonPestanaTablaSimbolos.addEventListener('click', () => cambiarPestanaSalida('tablaSimbolos'));
+
+function crearArbolParaRecorridos(nodo) {
+	if (!nodo) {
+		return null;
+	}
+
+	const hijos = [];
+	const atributos = nodo.atributos || {};
+
+	for (const [nombre, valor] of Object.entries(atributos)) {
+		if (nombre === 'interfaces' && atributos.interfaz) {
+			continue;
+		}
+
+		if (valor === undefined || valor === null || valor === '') {
+			continue;
+		}
+
+		const valorTexto = Array.isArray(valor) ? valor.join(', ') : String(valor);
+		hijos.push({
+			etiqueta: `${nombre} = ${valorTexto}`,
+			hijos: []
+		});
+	}
+
+	for (const hijo of nodo.hijos || []) {
+		const hijoConvertido = crearArbolParaRecorridos(hijo);
+
+		if (hijoConvertido) {
+			hijos.push(hijoConvertido);
+		}
+	}
+
+	return {
+		etiqueta: nodo.tipo,
+		hijos
+	};
+}
+
+function recorrerPreOrden(nodo, recorrido) {
+	if (!nodo) {
+		return;
+	}
+
+	recorrido.push(nodo.etiqueta);
+
+	for (const hijo of nodo.hijos) {
+		recorrerPreOrden(hijo, recorrido);
+	}
+}
+
+function recorrerInOrdenNArio(nodo, recorrido) {
+	if (!nodo) {
+		return;
+	}
+
+	if (!nodo.hijos.length) {
+		recorrido.push(nodo.etiqueta);
+		return;
+	}
+
+	recorrerInOrdenNArio(nodo.hijos[0], recorrido);
+	recorrido.push(nodo.etiqueta);
+
+	for (let indice = 1; indice < nodo.hijos.length; indice++) {
+		recorrerInOrdenNArio(nodo.hijos[indice], recorrido);
+	}
+}
+
+function recorrerPostOrden(nodo, recorrido) {
+	if (!nodo) {
+		return;
+	}
+
+	for (const hijo of nodo.hijos) {
+		recorrerPostOrden(hijo, recorrido);
+	}
+
+	recorrido.push(nodo.etiqueta);
+}
+
+function generarRecorridosAst(arbol) {
+	const arbolRecorridos = crearArbolParaRecorridos(arbol);
+	const preOrden = [];
+	const inOrden = [];
+	const postOrden = [];
+
+	recorrerPreOrden(arbolRecorridos, preOrden);
+	recorrerInOrdenNArio(arbolRecorridos, inOrden);
+	recorrerPostOrden(arbolRecorridos, postOrden);
+
+	return {
+		preOrden,
+		inOrden,
+		postOrden
+	};
+}
+
+function formatearRecorrido(recorrido) {
+	return recorrido
+		.map((etiqueta, indice) => `${indice + 1}. ${etiqueta}`)
+		.join('\n');
+}
+
+function mostrarRecorridos(arbol, puedeGenerarse) {
+	if (!salidaPreOrden || !salidaInOrden || !salidaPostOrden) {
+		return;
+	}
+
+	if (!entradaCodigo.value.trim()) {
+		salidaPreOrden.textContent = 'Sin recorrido generado.';
+		salidaInOrden.textContent = 'Sin recorrido generado.';
+		salidaPostOrden.textContent = 'Sin recorrido generado.';
+		return;
+	}
+
+	if (!puedeGenerarse || !arbol) {
+		const mensaje = 'No se generó el recorrido porque existen errores léxicos o sintácticos.';
+		salidaPreOrden.textContent = mensaje;
+		salidaInOrden.textContent = mensaje;
+		salidaPostOrden.textContent = mensaje;
+		return;
+	}
+
+	const recorridos = generarRecorridosAst(arbol);
+	salidaPreOrden.textContent = formatearRecorrido(recorridos.preOrden);
+	salidaInOrden.textContent = formatearRecorrido(recorridos.inOrden);
+	salidaPostOrden.textContent = formatearRecorrido(recorridos.postOrden);
+}
+
+function generarCodigoTresDirecciones(arbol) {
+	const lineas = [];
+	const temporalesDispositivos = new Map();
+	let numeroTemporal = 0;
+
+	function emitir(operador, argumento1 = '', argumento2 = '') {
+		numeroTemporal++;
+		const temporal = `T${numeroTemporal}`;
+		let expresion = operador;
+
+		if (argumento1 !== '') {
+			expresion += ` ${argumento1}`;
+		}
+
+		if (argumento2 !== '') {
+			expresion += `, ${argumento2}`;
+		}
+
+		lineas.push(`${temporal} = ${expresion}`);
+		return temporal;
+	}
+
+	function generarInstruccionDispositivo(instruccion, temporalDispositivo) {
+		const atributos = instruccion.atributos || {};
+
+		if (instruccion.tipo === 'ConfiguracionBasica') {
+			emitir('basica', temporalDispositivo);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionHostname') {
+			emitir('hostname', temporalDispositivo, atributos.nombre);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionSsh') {
+			const temporalCredencial = emitir('credencial', atributos.usuario, atributos.password);
+			const temporalDominio = emitir('dominio', temporalCredencial, atributos.dominio);
+			emitir('ssh', temporalDispositivo, temporalDominio);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionPuertoRouter') {
+			let temporalPuerto = emitir('puerto', temporalDispositivo, atributos.interfaz);
+
+			if (atributos.modo === 'troncal') {
+				emitir('modo_troncal', temporalPuerto);
+				return;
+			}
+
+			if (atributos.modo === 'sin_ip') {
+				emitir('sin_ip', temporalPuerto);
+				return;
+			}
+
+			temporalPuerto = emitir('ip', temporalPuerto, atributos.ip);
+			temporalPuerto = emitir('mascara', temporalPuerto, atributos.mascara);
+
+			if (atributos.helper) {
+				emitir('helper', temporalPuerto, atributos.helper);
+			}
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionSubpuertoRouter') {
+			let temporalSubpuerto = emitir('subpuerto', temporalDispositivo, atributos.interfaz);
+			temporalSubpuerto = emitir('vlan', temporalSubpuerto, atributos.vlan);
+
+			if (atributos.modo === 'nativa') {
+				emitir('nativa', temporalSubpuerto);
+				return;
+			}
+
+			temporalSubpuerto = emitir('ip', temporalSubpuerto, atributos.ip);
+			temporalSubpuerto = emitir('mascara', temporalSubpuerto, atributos.mascara);
+
+			if (atributos.helper) {
+				emitir('helper', temporalSubpuerto, atributos.helper);
+			}
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionPoolDhcp') {
+			let temporalPool = emitir('pool', temporalDispositivo, atributos.nombre);
+			temporalPool = emitir('red', temporalPool, atributos.red);
+			temporalPool = emitir('mascara', temporalPool, atributos.mascara);
+			temporalPool = emitir('gateway', temporalPool, atributos.gateway);
+			emitir('dns', temporalPool, atributos.dns);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionExcluirIp') {
+			const temporalRango = emitir('rango', atributos.ipInicial, atributos.ipFinal);
+			emitir('excluir', temporalDispositivo, temporalRango);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionVlan') {
+			const temporalVlan = emitir('vlan', temporalDispositivo, atributos.numero);
+			emitir('nombre', temporalVlan, atributos.nombre);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionPuertoSwitch') {
+			const interfaces = obtenerInterfacesConfiguracionSwitch(instruccion);
+			const temporalLista = emitir('lista_interfaces', `{${interfaces.join('; ')}}`);
+			const temporalPuertos = emitir('puertos', temporalDispositivo, temporalLista);
+			emitir('acceso', temporalPuertos, atributos.vlan);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionTroncalSwitch') {
+			let temporalTroncal = emitir('troncal', temporalDispositivo, atributos.interfaz);
+			temporalTroncal = emitir('nativa', temporalTroncal, atributos.vlanNativa);
+			emitir('vlans_permitidas', temporalTroncal, `{${String(atributos.vlansPermitidas).split(',').map(vlan => vlan.trim()).filter(Boolean).join('; ')}}`);
+			return;
+		}
+
+		if (instruccion.tipo === 'ConfiguracionAdministracionSwitch') {
+			let temporalAdministracion = emitir('administracion', temporalDispositivo, atributos.vlan);
+			temporalAdministracion = emitir('ip', temporalAdministracion, atributos.ip);
+			temporalAdministracion = emitir('mascara', temporalAdministracion, atributos.mascara);
+			emitir('gateway', temporalAdministracion, atributos.gateway);
+		}
+	}
+
+	for (const nodo of arbol.hijos || []) {
+		if (nodo.tipo === 'BloqueRouter' || nodo.tipo === 'BloqueSwitch') {
+			const tipoDispositivo = nodo.tipo === 'BloqueRouter' ? 'ROUTER' : 'SWITCH';
+			const nombreDispositivo = nodo.atributos.nombre;
+			const temporalDispositivo = emitir('dispositivo', tipoDispositivo, nombreDispositivo);
+			temporalesDispositivos.set(String(nombreDispositivo).toLowerCase(), temporalDispositivo);
+
+			for (const instruccion of nodo.hijos || []) {
+				generarInstruccionDispositivo(instruccion, temporalDispositivo);
+			}
+			continue;
+		}
+
+		if (nodo.tipo === 'SentenciaProbarPing') {
+			const origen = nodo.atributos.origen;
+			const destino = nodo.atributos.destino;
+			const temporalOrigen = temporalesDispositivos.get(String(origen).toLowerCase()) || origen;
+			const temporalDestino = temporalesDispositivos.get(String(destino).toLowerCase()) || destino;
+			emitir('ping', temporalOrigen, temporalDestino);
+			continue;
+		}
+
+		if (nodo.tipo === 'SentenciaMostrarRedes') {
+			emitir('mostrar', 'redes');
+			continue;
+		}
+
+		if (nodo.tipo === 'SentenciaVerificar') {
+			emitir('verificar', 'programa');
+		}
+	}
+
+	return lineas;
+}
+
+function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
+	if (!salidaCodigoTresDirecciones) {
+		return;
+	}
+
+	if (!entradaCodigo.value.trim()) {
+		salidaCodigoTresDirecciones.textContent = 'Sin código intermedio generado.';
+		return;
+	}
+
+	if (!puedeGenerarse || !arbol) {
+		salidaCodigoTresDirecciones.textContent = 'No se generó código de tres direcciones porque el programa contiene errores.';
+		return;
+	}
+
+	const codigo = generarCodigoTresDirecciones(arbol);
+	salidaCodigoTresDirecciones.textContent = codigo.length
+		? codigo.join('\n')
+		: 'No hay instrucciones válidas para generar código intermedio.';
+}
+
+AnalizadorSintactico.prototype.analizarConfiguracionHostname = function() {
+	const nodo = crearNodo('ConfiguracionHostname');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'hostname',
+		patron: [
+			{ tipo: 'TK_RES_HOSTNAME', nombre: 'hostname' },
+			{ tipo: 'TK_ID', nombre: 'nombre' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La instrucción hostname solo acepta un identificador como nombre del dispositivo.',
+		sugerenciaBase: 'Usa el formato: hostname R1.'
+	});
+
+	if (resultado.nombre) {
+		nodo.atributos.nombre = resultado.nombre.lexema;
+		nodo.tokenNombre = resultado.nombre;
+		nodo.tokenReferencia = resultado.nombre;
+	} else {
+		nodo.atributos.nombre = 'sin_nombre';
+		nodo.tokenReferencia = resultado.hostname || null;
+	}
+
+	return nodo;
+};
+
+AnalizadorSintactico.prototype.analizarConfiguracionSsh = function() {
+	const nodo = crearNodo('ConfiguracionSsh');
+	const resultado = this.validarPatronFlexible({
+		nombreEstructura: 'ssh',
+		patron: [
+			{ tipo: 'TK_RES_SSH', nombre: 'ssh' },
+			{ tipo: 'TK_RES_USUARIO' },
+			{ tipo: 'TK_ID', nombre: 'usuario' },
+			{ tipo: 'TK_RES_PASSWORD' },
+			{ tipo: 'TK_ID', nombre: 'password' },
+			{ tipo: 'TK_RES_DOMINIO' },
+			{ tipo: 'TK_DOMINIO', nombre: 'dominio' }
+		],
+		tiposDetencion: this.obtenerTiposDetencionDentroDeBloque(),
+		descripcionBase: 'La instrucción ssh solo acepta usuario, password y dominio en ese orden.',
+		sugerenciaBase: 'Usa el formato: ssh usuario admin password cisco123 dominio cisco.com.'
+	});
+
+	if (resultado.usuario) {
+		nodo.atributos.usuario = resultado.usuario.lexema;
+		nodo.tokenUsuario = resultado.usuario;
+	} else {
+		nodo.atributos.usuario = 'sin_usuario';
+	}
+
+	if (resultado.password) {
+		nodo.atributos.password = resultado.password.lexema;
+		nodo.tokenPassword = resultado.password;
+	} else {
+		nodo.atributos.password = 'sin_password';
+	}
+
+	if (resultado.dominio) {
+		nodo.atributos.dominio = resultado.dominio.lexema;
+		nodo.tokenDominio = resultado.dominio;
+	} else {
+		nodo.atributos.dominio = 'sin_dominio';
+	}
+
+	nodo.tokenReferencia = resultado.ssh || resultado.usuario || resultado.password || resultado.dominio || null;
+	return nodo;
+};
+
+function crearEntradaTablaSimbolos(datos) {
+	const token = datos.token || null;
+
+	return {
+		nombre: datos.nombre,
+		tipo: datos.tipo,
+		valor: datos.valor,
+		ambito: datos.ambito,
+		renglon: token && Number.isInteger(token.renglon) ? token.renglon : '—',
+		columna: token && Number.isInteger(token.columna) ? token.columna : '—'
+	};
+}
+
+function esValorTablaSimbolosValido(valor, valorInvalido = '') {
+	if (valor === undefined || valor === null || valor === '') {
+		return false;
+	}
+
+	return String(valor) !== valorInvalido && !String(valor).startsWith('sin_');
+}
+
+function obtenerPoolRelacionadoConExclusion(instrucciones, exclusion) {
+	const ipInicial = exclusion.atributos.ipInicial;
+	const ipFinal = exclusion.atributos.ipFinal;
+
+	if (
+		!esValorTablaSimbolosValido(ipInicial, 'sin_ip_inicial') ||
+		!esValorTablaSimbolosValido(ipFinal, 'sin_ip_final')
+	) {
+		return null;
+	}
+
+	const poolsRelacionados = instrucciones.filter(instruccion => {
+		if (instruccion.tipo !== 'ConfiguracionPoolDhcp') {
+			return false;
+		}
+
+		const red = instruccion.atributos.red;
+		const mascara = instruccion.atributos.mascara;
+
+		if (
+			!esValorTablaSimbolosValido(red, 'sin_red') ||
+			!esValorTablaSimbolosValido(mascara, 'sin_mascara')
+		) {
+			return false;
+		}
+
+		return ipPerteneceARed(ipInicial, red, mascara) &&
+			ipPerteneceARed(ipFinal, red, mascara);
+	});
+
+	return poolsRelacionados.length === 1 ? poolsRelacionados[0] : null;
+}
+
+function generarTablaSimbolos(arbol) {
+	const simbolos = [];
+
+	function agregar(datos) {
+		if (
+			!esValorTablaSimbolosValido(datos.nombre) ||
+			!esValorTablaSimbolosValido(datos.valor)
+		) {
+			return;
+		}
+
+		simbolos.push(crearEntradaTablaSimbolos(datos));
+	}
+
+	for (const nodo of arbol.hijos || []) {
+		if (!['BloqueRouter', 'BloqueSwitch'].includes(nodo.tipo)) {
+			continue;
+		}
+
+		const tipoDispositivo = nodo.tipo === 'BloqueRouter' ? 'ROUTER' : 'SWITCH';
+		const nombreDispositivo = nodo.atributos.nombre;
+		const ambitoDispositivo = `${tipoDispositivo} ${nombreDispositivo}`;
+		const instrucciones = Array.isArray(nodo.hijos) ? nodo.hijos : [];
+
+		agregar({
+			nombre: `dispositivo ${nombreDispositivo}`,
+			tipo: 'dispositivo',
+			valor: tipoDispositivo,
+			ambito: 'global',
+			token: nodo.tokenReferencia
+		});
+
+		const contadoresExclusion = new Map();
+
+		for (const instruccion of instrucciones) {
+			const atributos = instruccion.atributos || {};
+
+			if (instruccion.tipo === 'ConfiguracionHostname') {
+				agregar({
+					nombre: `hostname ${nombreDispositivo}`,
+					tipo: 'identificador',
+					valor: atributos.nombre,
+					ambito: ambitoDispositivo,
+					token: instruccion.tokenNombre || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionSsh') {
+				agregar({
+					nombre: `usuario ${nombreDispositivo}`,
+					tipo: 'identificador',
+					valor: atributos.usuario,
+					ambito: `${ambitoDispositivo} > SSH`,
+					token: instruccion.tokenUsuario || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `contraseña ${atributos.usuario}`,
+					tipo: 'cadena',
+					valor: atributos.password,
+					ambito: `${ambitoDispositivo} > SSH`,
+					token: instruccion.tokenPassword || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `dominio ${nombreDispositivo}`,
+					tipo: 'dominio',
+					valor: atributos.dominio,
+					ambito: `${ambitoDispositivo} > SSH`,
+					token: instruccion.tokenDominio || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPuertoRouter') {
+				const interfaz = atributos.interfaz;
+				const ambitoInterfaz = `${ambitoDispositivo} > ${interfaz}`;
+
+				if (atributos.modo === 'troncal' || atributos.modo === 'sin_ip') {
+					agregar({
+						nombre: `modo ${nombreDispositivo}.${interfaz}`,
+						tipo: 'modo de interfaz',
+						valor: atributos.modo,
+						ambito: ambitoInterfaz,
+						token: instruccion.tokenInterfaz || instruccion.tokenReferencia
+					});
+				}
+
+				agregar({
+					nombre: `ip ${nombreDispositivo}.${interfaz}`,
+					tipo: 'IPv4',
+					valor: atributos.ip,
+					ambito: ambitoInterfaz,
+					token: instruccion.tokenIp || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `máscara ${nombreDispositivo}.${interfaz}`,
+					tipo: 'CIDR',
+					valor: atributos.mascara,
+					ambito: ambitoInterfaz,
+					token: instruccion.tokenMascara || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `helper ${nombreDispositivo}.${interfaz}`,
+					tipo: 'IPv4',
+					valor: atributos.helper,
+					ambito: ambitoInterfaz,
+					token: instruccion.tokenHelper || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionSubpuertoRouter') {
+				const interfaz = atributos.interfaz;
+				const ambitoSubinterfaz = `${ambitoDispositivo} > ${interfaz}`;
+
+				agregar({
+					nombre: `vlan ${nombreDispositivo}.${interfaz}`,
+					tipo: 'VLAN',
+					valor: atributos.vlan,
+					ambito: ambitoSubinterfaz,
+					token: instruccion.tokenVlan || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `modo ${nombreDispositivo}.${interfaz}`,
+					tipo: 'modo de subinterfaz',
+					valor: atributos.modo,
+					ambito: ambitoSubinterfaz,
+					token: instruccion.tokenInterfaz || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `ip ${nombreDispositivo}.${interfaz}`,
+					tipo: 'IPv4',
+					valor: atributos.ip,
+					ambito: ambitoSubinterfaz,
+					token: instruccion.tokenIp || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `máscara ${nombreDispositivo}.${interfaz}`,
+					tipo: 'CIDR',
+					valor: atributos.mascara,
+					ambito: ambitoSubinterfaz,
+					token: instruccion.tokenMascara || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `helper ${nombreDispositivo}.${interfaz}`,
+					tipo: 'IPv4',
+					valor: atributos.helper,
+					ambito: ambitoSubinterfaz,
+					token: instruccion.tokenHelper || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPoolDhcp') {
+				const nombrePool = atributos.nombre;
+				const ambitoPool = `${ambitoDispositivo} > pool ${nombrePool}`;
+
+				agregar({
+					nombre: `red ${nombrePool}`,
+					tipo: 'IPv4',
+					valor: atributos.red,
+					ambito: ambitoPool,
+					token: instruccion.tokenRed || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `máscara ${nombrePool}`,
+					tipo: 'CIDR',
+					valor: atributos.mascara,
+					ambito: ambitoPool,
+					token: instruccion.tokenMascara || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `gateway ${nombrePool}`,
+					tipo: 'IPv4',
+					valor: atributos.gateway,
+					ambito: ambitoPool,
+					token: instruccion.tokenGateway || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `dns ${nombrePool}`,
+					tipo: 'IPv4',
+					valor: atributos.dns,
+					ambito: ambitoPool,
+					token: instruccion.tokenDns || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionExcluirIp') {
+				const poolRelacionado = obtenerPoolRelacionadoConExclusion(instrucciones, instruccion);
+				const propietario = poolRelacionado
+					? poolRelacionado.atributos.nombre
+					: nombreDispositivo;
+				const ambitoExclusion = poolRelacionado
+					? `${ambitoDispositivo} > pool ${poolRelacionado.atributos.nombre}`
+					: ambitoDispositivo;
+				const numeroExclusion = (contadoresExclusion.get(propietario) || 0) + 1;
+				contadoresExclusion.set(propietario, numeroExclusion);
+
+				agregar({
+					nombre: `exclusión ${propietario} ${numeroExclusion}`,
+					tipo: 'rango IPv4',
+					valor: `${atributos.ipInicial} - ${atributos.ipFinal}`,
+					ambito: ambitoExclusion,
+					token: instruccion.tokenIpInicial || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionVlan') {
+				agregar({
+					nombre: `nombre VLAN ${nombreDispositivo}.${atributos.numero}`,
+					tipo: 'identificador',
+					valor: atributos.nombre,
+					ambito: `${ambitoDispositivo} > VLAN ${atributos.numero}`,
+					token: instruccion.tokenNombre || instruccion.tokenNumero || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionPuertoSwitch') {
+				for (const interfaz of obtenerInterfacesConfiguracionSwitch(instruccion)) {
+					agregar({
+						nombre: `acceso ${nombreDispositivo}.${interfaz}`,
+						tipo: 'VLAN',
+						valor: atributos.vlan,
+						ambito: `${ambitoDispositivo} > ${interfaz}`,
+						token: instruccion.tokenVlan || instruccion.tokenInterfaz || instruccion.tokenReferencia
+					});
+				}
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionTroncalSwitch') {
+				const interfaz = atributos.interfaz;
+				const ambitoTroncal = `${ambitoDispositivo} > ${interfaz}`;
+
+				agregar({
+					nombre: `vlan nativa ${nombreDispositivo}.${interfaz}`,
+					tipo: 'VLAN',
+					valor: atributos.vlanNativa,
+					ambito: ambitoTroncal,
+					token: instruccion.tokenVlanNativa || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `vlans permitidas ${nombreDispositivo}.${interfaz}`,
+					tipo: 'lista de VLAN',
+					valor: atributos.vlansPermitidas,
+					ambito: ambitoTroncal,
+					token: instruccion.tokenVlansPermitidas || instruccion.tokenReferencia
+				});
+				continue;
+			}
+
+			if (instruccion.tipo === 'ConfiguracionAdministracionSwitch') {
+				const ambitoAdministracion = `${ambitoDispositivo} > administración`;
+
+				agregar({
+					nombre: `vlan administración ${nombreDispositivo}`,
+					tipo: 'VLAN',
+					valor: atributos.vlan,
+					ambito: ambitoAdministracion,
+					token: instruccion.tokenVlan || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `ip administración ${nombreDispositivo}`,
+					tipo: 'IPv4',
+					valor: atributos.ip,
+					ambito: ambitoAdministracion,
+					token: instruccion.tokenIp || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `máscara administración ${nombreDispositivo}`,
+					tipo: 'CIDR',
+					valor: atributos.mascara,
+					ambito: ambitoAdministracion,
+					token: instruccion.tokenMascara || instruccion.tokenReferencia
+				});
+				agregar({
+					nombre: `gateway administración ${nombreDispositivo}`,
+					tipo: 'IPv4',
+					valor: atributos.gateway,
+					ambito: ambitoAdministracion,
+					token: instruccion.tokenGateway || instruccion.tokenReferencia
+				});
+			}
+		}
+	}
+
+	return simbolos;
+}
+
+function mostrarTablaSimbolos(arbol, puedeGenerarse) {
+	if (!cuerpoTablaSimbolos) {
+		return;
+	}
+
+	if (!entradaCodigo.value.trim()) {
+		cuerpoTablaSimbolos.innerHTML = '<tr><td colspan="7" class="celda-vacia">No hay símbolos para mostrar.</td></tr>';
+		return;
+	}
+
+	if (!puedeGenerarse || !arbol) {
+		cuerpoTablaSimbolos.innerHTML = '<tr><td colspan="7" class="celda-vacia">No se generó la tabla porque existen errores léxicos o sintácticos.</td></tr>';
+		return;
+	}
+
+	const simbolos = generarTablaSimbolos(arbol);
+
+	if (!simbolos.length) {
+		cuerpoTablaSimbolos.innerHTML = '<tr><td colspan="7" class="celda-vacia">No se encontraron símbolos con valores asignados en el programa.</td></tr>';
+		return;
+	}
+
+	cuerpoTablaSimbolos.innerHTML = simbolos.map((simbolo, indice) => `
+		<tr>
+			<td>${indice + 1}</td>
+			<td><strong>${escaparHtml(simbolo.nombre)}</strong></td>
+			<td>${escaparHtml(simbolo.tipo)}</td>
+			<td><code>${escaparHtml(simbolo.valor)}</code></td>
+			<td>${escaparHtml(simbolo.ambito)}</td>
+			<td>${escaparHtml(simbolo.renglon)}</td>
+			<td>${escaparHtml(simbolo.columna)}</td>
+		</tr>
+	`).join('');
+}
+
+analizarCodigo = function() {
+	const texto = entradaCodigo.value;
+	const resultadoLexico = analizarLexico(texto);
+	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
+	const resultadoSemantico = resultadoSintactico.arbol
+		? analizarSemantico(resultadoSintactico.arbol)
+		: { errores: [], reglasEjecutadas: [] };
+
+	const erroresEstructurales = [
+		...resultadoLexico.errores,
+		...resultadoSintactico.errores
+	];
+	const errores = [
+		...erroresEstructurales,
+		...resultadoSemantico.errores
+	];
+	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
+	const puedeConstruirseAst = erroresEstructurales.length === 0;
+	const puedeGenerarseCodigoIntermedio = errores.length === 0;
+
+	actualizarNumerosRenglon(texto);
+	actualizarResaltado(texto, errores, resultadoLexico.tokens);
+	mostrarTokens(tokensParaTabla);
+	mostrarErrores(errores);
+	mostrarSugerencias(errores);
+	mostrarResumen(tokensParaTabla, errores);
+	mostrarArbol(puedeConstruirseAst ? resultadoSintactico.arbol : null);
+	mostrarRecorridos(resultadoSintactico.arbol, puedeConstruirseAst);
+	mostrarCodigoTresDirecciones(resultadoSintactico.arbol, puedeGenerarseCodigoIntermedio);
+	mostrarTablaSimbolos(resultadoSintactico.arbol, puedeConstruirseAst);
+	mostrarReglasSemanticas(resultadoSemantico.reglasEjecutadas || []);
+	actualizarAutocompletado();
+
+	sincronizarDesplazamiento();
+};
+
 analizarCodigo();

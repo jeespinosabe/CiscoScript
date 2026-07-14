@@ -631,3 +631,67 @@ tr:hover td {
 		max-height: 430px;
 	}
 }
+
+/* Parte 1: recorridos del árbol */
+.nota-recorrido {
+	max-width: 980px;
+	line-height: 1.6;
+}
+
+.rejilla-recorridos {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 16px;
+}
+
+.tarjeta-recorrido {
+	min-width: 0;
+}
+
+.tarjeta-recorrido h4 {
+	margin: 0 0 8px;
+	font-size: 15px;
+	color: #334155;
+}
+
+.salida-recorrido {
+	margin-top: 0;
+	min-height: 320px;
+	max-height: 520px;
+	white-space: pre;
+}
+
+@media (max-width: 1000px) {
+	.rejilla-recorridos {
+		grid-template-columns: 1fr;
+	}
+
+	.salida-recorrido {
+		min-height: 220px;
+	}
+}
+
+/* Parte 2: código de tres direcciones */
+.salida-codigo-tres-direcciones {
+	min-height: 340px;
+	white-space: pre;
+}
+
+/* Parte 3: tabla de símbolos semántica */
+.tabla-simbolos-contenedor {
+	margin-top: 16px;
+	max-height: 520px;
+	border: 1px solid var(--borde);
+	border-radius: 14px;
+}
+
+.tabla-simbolos-contenedor table {
+	min-width: 900px;
+}
+
+.tabla-simbolos-contenedor code {
+	font-family: var(--fuente-codigo);
+	font-size: 13px;
+	color: #1e293b;
+}

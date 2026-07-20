@@ -5636,7 +5636,7 @@ function mostrarCuadruplos(cuadruplos){
     cuadruplos.forEach((c,i)=>{
         cuerpo.innerHTML += `
             <tr>
-                <td>${i+1}</td>
+                <td>${i}</td>
                 <td>${c.operador}</td>
                 <td>${c.arg1}</td>
                 <td>${c.arg2}</td>

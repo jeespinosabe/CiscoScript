@@ -5260,6 +5260,9 @@ const cuerpoTablaSimbolos = document.querySelector('#cuerpoTablaSimbolos');
 const botonPestanaCuadruplos = document.querySelector('#botonPestanaCuadruplos');
 const panelSalidaCuadruplos = document.querySelector("#panelSalidaCuadruplos");
 const cuerpoTablaCuadruplos = document.querySelector('#cuerpoTablaCuadruplos');
+const botonPestanaTripletas = document.querySelector('#botonPestanaTripletas');
+const panelSalidaTripletas = document.querySelector("#panelSalidaTripletas");
+const cuerpoTablaTripletas = document.querySelector('#cuerpoTablaTripletas');
 
 cambiarPestanaSalida = function(pestanaActiva) {
 	const pestanas = [
@@ -5269,6 +5272,7 @@ cambiarPestanaSalida = function(pestanaActiva) {
 		{ nombre: 'tablaSimbolos', boton: botonPestanaTablaSimbolos, panel: panelSalidaTablaSimbolos },
 		{ nombre: 'semantica', boton: botonPestanaSemantica, panel: panelSalidaSemantica },
 		{ nombre: 'cuadruplos', boton: botonPestanaCuadruplos, panel: panelSalidaCuadruplos },
+		{ nombre: 'tripletas', boton: botonPestanaTripletas, panel: panelSalidaTripletas},
 	];
 
 	for (const pestana of pestanas) {
@@ -5292,6 +5296,8 @@ botonPestanaCodigoTresDirecciones.addEventListener('click', () => cambiarPestana
 botonPestanaTablaSimbolos.addEventListener('click', () => cambiarPestanaSalida('tablaSimbolos'));
 
 botonPestanaCuadruplos.addEventListener('click', () => cambiarPestanaSalida('cuadruplos'));
+
+botonPestanaTripletas.addEventListener('click', () => cambiarPestanaSalida('tripletas'));
 
 function crearArbolParaRecorridos(nodo) {
 	if (!nodo) {
@@ -5430,7 +5436,7 @@ function generarCodigoTresDirecciones(arbol) {
 
 	function emitir(operador, argumento1 = '', argumento2 = '') {
 		numeroTemporal++;
-		const temporal = `T${numeroTemporal}`;
+		const temporal = new String(`T${numeroTemporal}`);
 		let expresion = operador;
 
 		if (argumento1 !== '') {
@@ -5617,6 +5623,7 @@ function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
 			: "No hay instrucciones válidas para generar código intermedio.";
 
 	mostrarCuadruplos(resultado.cuadruplos);
+	mostrarTripletas(generarTripletas(resultado.cuadruplos));
 }
 
 function mostrarCuadruplos(cuadruplos){
@@ -5645,6 +5652,54 @@ function mostrarCuadruplos(cuadruplos){
         `;
     });
 
+}
+
+function generarTripletas(cuadruplos) {
+	const posicionPorTemporal = new Map();
+
+	cuadruplos.forEach((cuadruplo, indice) => {
+		posicionPorTemporal.set(cuadruplo.resultado, indice);
+	});
+
+	function resolverArgumento(valor) {
+		if (valor !== '' && posicionPorTemporal.has(valor)) {return `(${posicionPorTemporal.get(valor)})`;}
+		return valor;
+	}
+
+	return cuadruplos.map((cuadruplo) => ({
+		operador: cuadruplo.operador,
+		arg1: resolverArgumento(cuadruplo.arg1),
+		arg2: resolverArgumento(cuadruplo.arg2)
+	}));
+}
+
+function mostrarTripletas(tripletas) {
+	const cuerpo = document.getElementById('cuerpoTablaTripletas');
+	if (!cuerpo) {return;}
+
+	cuerpo.innerHTML = '';
+
+	if (tripletas.length === 0) {
+		cuerpo.innerHTML = `
+            <tr>
+                <td colspan="4" class="celda-vacia">
+                    Sin Tripletas generadas para mostrar.
+                </td>
+            </tr>
+        `;
+		return;
+	}
+
+	tripletas.forEach((t, i) => {
+		cuerpo.innerHTML += `
+            <tr>
+                <td>${i}</td>
+                <td>${t.operador}</td>
+                <td>${t.arg1}</td>
+                <td>${t.arg2}</td>
+            </tr>
+        `;
+	});
 }
 
 AnalizadorSintactico.prototype.analizarConfiguracionHostname = function() {

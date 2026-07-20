@@ -5257,6 +5257,9 @@ const salidaCodigoTresDirecciones = document.querySelector('#salidaCodigoTresDir
 const botonPestanaTablaSimbolos = document.querySelector('#botonPestanaTablaSimbolos');
 const panelSalidaTablaSimbolos = document.querySelector('#panelSalidaTablaSimbolos');
 const cuerpoTablaSimbolos = document.querySelector('#cuerpoTablaSimbolos');
+const botonPestanaCuadruplos = document.querySelector('#botonPestanaCuadruplos');
+const panelSalidaCuadruplos = document.querySelector("#panelSalidaCuadruplos");
+const cuerpoTablaCuadruplos = document.querySelector('#cuerpoTablaCuadruplos');
 
 cambiarPestanaSalida = function(pestanaActiva) {
 	const pestanas = [
@@ -5265,6 +5268,7 @@ cambiarPestanaSalida = function(pestanaActiva) {
 		{ nombre: 'codigoTresDirecciones', boton: botonPestanaCodigoTresDirecciones, panel: panelSalidaCodigoTresDirecciones },
 		{ nombre: 'tablaSimbolos', boton: botonPestanaTablaSimbolos, panel: panelSalidaTablaSimbolos },
 		{ nombre: 'semantica', boton: botonPestanaSemantica, panel: panelSalidaSemantica },
+		{ nombre: 'cuadruplos', boton: botonPestanaCuadruplos, panel: panelSalidaCuadruplos },
 	];
 
 	for (const pestana of pestanas) {
@@ -5286,6 +5290,8 @@ botonPestanaRecorridos.addEventListener('click', () => cambiarPestanaSalida('rec
 botonPestanaCodigoTresDirecciones.addEventListener('click', () => cambiarPestanaSalida('codigoTresDirecciones'));
 
 botonPestanaTablaSimbolos.addEventListener('click', () => cambiarPestanaSalida('tablaSimbolos'));
+
+botonPestanaCuadruplos.addEventListener('click', () => cambiarPestanaSalida('cuadruplos'));
 
 function crearArbolParaRecorridos(nodo) {
 	if (!nodo) {
@@ -5418,6 +5424,7 @@ function mostrarRecorridos(arbol, puedeGenerarse) {
 
 function generarCodigoTresDirecciones(arbol) {
 	const lineas = [];
+	const cuadruplos = [];
 	const temporalesDispositivos = new Map();
 	let numeroTemporal = 0;
 
@@ -5435,6 +5442,13 @@ function generarCodigoTresDirecciones(arbol) {
 		}
 
 		lineas.push(`${temporal} = ${expresion}`);
+
+		cuadruplos.push({
+			operador,
+			arg1: argumento1,
+			arg2: argumento2,
+			resultado: temporal
+		});
 		return temporal;
 	}
 
@@ -5573,8 +5587,11 @@ function generarCodigoTresDirecciones(arbol) {
 			emitir('verificar', 'programa');
 		}
 	}
-
-	return lineas;
+	
+	return {
+		codigo: lineas,
+		cuadruplos
+	};
 }
 
 function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
@@ -5592,10 +5609,42 @@ function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
 		return;
 	}
 
-	const codigo = generarCodigoTresDirecciones(arbol);
-	salidaCodigoTresDirecciones.textContent = codigo.length
-		? codigo.join('\n')
-		: 'No hay instrucciones válidas para generar código intermedio.';
+	const resultado = generarCodigoTresDirecciones(arbol);
+
+	salidaCodigoTresDirecciones.textContent =
+		resultado.codigo.length
+			? resultado.codigo.join("\n")
+			: "No hay instrucciones válidas para generar código intermedio.";
+
+	mostrarCuadruplos(resultado.cuadruplos);
+}
+
+function mostrarCuadruplos(cuadruplos){
+    const cuerpo = document.getElementById("cuerpoTablaCuadruplos");
+    cuerpo.innerHTML = "";
+    if(cuadruplos.length === 0){
+        cuerpo.innerHTML = `
+            <tr>
+                <td colspan="5" class="celda-vacia">
+                    Sin cuádruplos generados para mostrar.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    cuadruplos.forEach((c,i)=>{
+        cuerpo.innerHTML += `
+            <tr>
+                <td>${i+1}</td>
+                <td>${c.operador}</td>
+                <td>${c.arg1}</td>
+                <td>${c.arg2}</td>
+                <td>${c.resultado}</td>
+            </tr>
+        `;
+    });
+
 }
 
 AnalizadorSintactico.prototype.analizarConfiguracionHostname = function() {

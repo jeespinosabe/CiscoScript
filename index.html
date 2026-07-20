@@ -120,6 +120,7 @@
 						<button id="botonPestanaCodigoTresDirecciones" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaCodigoTresDirecciones">Código 3 direcciones</button>
 						<button id="botonPestanaTablaSimbolos" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaTablaSimbolos">Tabla de símbolos</button>
 						<button id="botonPestanaSemantica" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaSemantica">Semántica</button>
+						<button id="botonPestanaCuadruplos" class="boton-pestana-salida" type="button" role="tab" aria-selected="false" aria-controls="panelSalidaCuadruplos">Cuádruplos</button>
 					</div>
 				</div>
 
@@ -183,6 +184,29 @@
 				<div id="panelSalidaSemantica" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaSemantica">
 					<h3>Reglas semánticas ejecutadas</h3>
 					<pre id="salidaReglasSemanticas" class="salida-arbol salida-reglas-semanticas">Sin reglas semánticas ejecutadas.</pre>
+				</div>
+		
+				<div id="panelSalidaCuadruplos" class="contenido-pestana-salida oculto" role="tabpanel" aria-labelledby="botonPestanaCuadruplos">
+					<h3>Tabla de símbolos</h3>
+
+					<div class="tabla-contenedor tabla-cuadruplos-contenedor">
+						<table>
+							<thead>
+								<tr>
+									<th>#</th>
+									<th>Operador</th>
+									<th>Arg1</th>
+									<th>Arg2</th>
+									<th>Resultado</th>
+								</tr>
+							</thead>
+							<tbody id="cuerpoTablaCuadruplos">
+								<tr>
+									<td colspan="5" class="celda-vacia">Sin cuádruplos generados para mostrar.</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</section>
 			<footer class="pie">

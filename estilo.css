@@ -695,3 +695,21 @@ tr:hover td {
 	font-size: 13px;
 	color: #1e293b;
 }
+
+/*Parte 4: Tabla de Cuádruplos*/
+.tabla-cuadruplos-contenedor {
+	margin-top: 16px;
+	max-height: 520px;
+	border: 1px solid var(--borde);
+	border-radius: 14px;
+}
+
+.tabla-cuadruplos-contenedor table {
+	min-width: 900px;
+}
+
+.tabla-cuadruplos-contenedor code {
+	font-family: var(--fuente-codigo);
+	font-size: 13px;
+	color: #1e293b;
+}

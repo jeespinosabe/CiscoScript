@@ -3020,13 +3020,19 @@ function analizarCodigo() {
 		? analizarSemantico(resultadoSintactico.arbol)
 		: { errores: [], reglasEjecutadas: [] };
 
-	const errores = [
+	const erroresEstructurales = [
 		...resultadoLexico.errores,
 		...resultadoSintactico.errores,
-		...resultadoSemantico.errores
 	];
+
+	const errores = [
+		...erroresEstructurales,
+		...resultadoSemantico.errores
+
+	]
 	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
-	const hayErrores = errores.length > 0;
+	const puedeConstruirseAst = erroresEstructurales.length === 0;
+	const puedeGenerarseCodigoIntermedio = errores.length === 0;
 
 	actualizarNumerosRenglon(texto);
 	actualizarResaltado(texto, errores, resultadoLexico.tokens);
@@ -3034,7 +3040,10 @@ function analizarCodigo() {
 	mostrarErrores(errores);
 	mostrarSugerencias(errores);
 	mostrarResumen(tokensParaTabla, errores);
-	mostrarArbol(hayErrores ? null : resultadoSintactico.arbol);
+	mostrarArbol(puedeConstruirseAst ? resultadoSintactico.arbol : null);
+	mostrarRecorridos(resultadoSintactico.arbol, puedeConstruirseAst);
+	mostrarCodigoTresDirecciones(resultadoSintactico.arbol, puedeGenerarseCodigoIntermedio);
+	mostrarTablaSimbolos(resultadoSintactico.arbol, puedeConstruirseAst)
 	mostrarReglasSemanticas(resultadoSemantico.reglasEjecutadas || []);
 	actualizarAutocompletado();
 
@@ -6151,40 +6160,6 @@ function mostrarTablaSimbolos(arbol, puedeGenerarse) {
 	`).join('');
 }
 
-analizarCodigo = function() {
-	const texto = entradaCodigo.value;
-	const resultadoLexico = analizarLexico(texto);
-	const resultadoSintactico = analizarSintactico(resultadoLexico.tokensValidos);
-	const resultadoSemantico = resultadoSintactico.arbol
-		? analizarSemantico(resultadoSintactico.arbol)
-		: { errores: [], reglasEjecutadas: [] };
 
-	const erroresEstructurales = [
-		...resultadoLexico.errores,
-		...resultadoSintactico.errores
-	];
-	const errores = [
-		...erroresEstructurales,
-		...resultadoSemantico.errores
-	];
-	const tokensParaTabla = crearTokensParaTabla(resultadoLexico.tokens, errores);
-	const puedeConstruirseAst = erroresEstructurales.length === 0;
-	const puedeGenerarseCodigoIntermedio = errores.length === 0;
-
-	actualizarNumerosRenglon(texto);
-	actualizarResaltado(texto, errores, resultadoLexico.tokens);
-	mostrarTokens(tokensParaTabla);
-	mostrarErrores(errores);
-	mostrarSugerencias(errores);
-	mostrarResumen(tokensParaTabla, errores);
-	mostrarArbol(puedeConstruirseAst ? resultadoSintactico.arbol : null);
-	mostrarRecorridos(resultadoSintactico.arbol, puedeConstruirseAst);
-	mostrarCodigoTresDirecciones(resultadoSintactico.arbol, puedeGenerarseCodigoIntermedio);
-	mostrarTablaSimbolos(resultadoSintactico.arbol, puedeConstruirseAst);
-	mostrarReglasSemanticas(resultadoSemantico.reglasEjecutadas || []);
-	actualizarAutocompletado();
-
-	sincronizarDesplazamiento();
-};
 
 analizarCodigo();

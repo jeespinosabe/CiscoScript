@@ -5263,6 +5263,8 @@ const salidaPostOrden = document.querySelector('#salidaPostOrden');
 const botonPestanaCodigoTresDirecciones = document.querySelector('#botonPestanaCodigoTresDirecciones');
 const panelSalidaCodigoTresDirecciones = document.querySelector('#panelSalidaCodigoTresDirecciones');
 const salidaCodigoTresDirecciones = document.querySelector('#salidaCodigoTresDirecciones');
+const botonDescargarCodigoIntermedio = document.querySelector('#botonDescargarCodigoIntermedio');
+let codigoIntermedioDescargable = '';
 const botonPestanaTablaSimbolos = document.querySelector('#botonPestanaTablaSimbolos');
 const panelSalidaTablaSimbolos = document.querySelector('#panelSalidaTablaSimbolos');
 const cuerpoTablaSimbolos = document.querySelector('#cuerpoTablaSimbolos');
@@ -5442,10 +5444,20 @@ function generarCodigoTresDirecciones(arbol) {
 	const cuadruplos = [];
 	const temporalesDispositivos = new Map();
 	let numeroTemporal = 0;
+	let numeroEtiqueta = 0;
+
+	function nuevoTemporal() {
+		numeroTemporal++;
+		return `T${numeroTemporal}`;
+	}
+
+	function nuevaEtiqueta() {
+		numeroEtiqueta++;
+		return `Label${String(numeroEtiqueta).padStart(2, '0')}`;
+	}
 
 	function emitir(operador, argumento1 = '', argumento2 = '') {
-		numeroTemporal++;
-		const temporal = new String(`T${numeroTemporal}`);
+		const temporal = nuevoTemporal();
 		let expresion = operador;
 
 		if (argumento1 !== '') {
@@ -5457,14 +5469,96 @@ function generarCodigoTresDirecciones(arbol) {
 		}
 
 		lineas.push(`${temporal} = ${expresion}`);
-
 		cuadruplos.push({
 			operador,
 			arg1: argumento1,
 			arg2: argumento2,
 			resultado: temporal
 		});
+
 		return temporal;
+	}
+
+	function emitirEtiqueta(etiqueta) {
+		lineas.push(`${etiqueta}:`);
+		cuadruplos.push({
+			operador: 'label',
+			arg1: '',
+			arg2: '',
+			resultado: etiqueta
+		});
+	}
+
+	function emitirSalto(etiqueta) {
+		lineas.push(`goto ${etiqueta}`);
+		cuadruplos.push({
+			operador: 'goto',
+			arg1: '',
+			arg2: '',
+			resultado: etiqueta
+		});
+	}
+
+	function emitirSaltoCondicional(condicion, etiquetaVerdadera) {
+		lineas.push(`if ${condicion} goto ${etiquetaVerdadera}`);
+		cuadruplos.push({
+			operador: 'if',
+			arg1: condicion,
+			arg2: '',
+			resultado: etiquetaVerdadera
+		});
+	}
+
+	function emitirFin() {
+		lineas.push('FIN');
+		cuadruplos.push({
+			operador: 'FIN',
+			arg1: '',
+			arg2: '',
+			resultado: ''
+		});
+	}
+
+	function generarCondicional(resultadoCondicion, operadorVerdadero, argumentosVerdadero, operadorFalso, argumentosFalso) {
+		const etiquetaVerdadera = nuevaEtiqueta();
+		const etiquetaFalsa = nuevaEtiqueta();
+		const etiquetaFin = nuevaEtiqueta();
+
+		emitirSaltoCondicional(resultadoCondicion, etiquetaVerdadera);
+		emitirSalto(etiquetaFalsa);
+		lineas.push('');
+
+		emitirEtiqueta(etiquetaVerdadera);
+		emitir(operadorVerdadero, argumentosVerdadero[0] || '', argumentosVerdadero[1] || '');
+		emitirSalto(etiquetaFin);
+		lineas.push('');
+
+		emitirEtiqueta(etiquetaFalsa);
+		emitir(operadorFalso, argumentosFalso[0] || '', argumentosFalso[1] || '');
+		lineas.push('');
+
+		emitirEtiqueta(etiquetaFin);
+	}
+
+	function generarCondicionalFinal(resultadoCondicion, operadorVerdadero, argumentosVerdadero, operadorFalso, argumentosFalso) {
+		const etiquetaVerdadera = nuevaEtiqueta();
+		const etiquetaFalsa = nuevaEtiqueta();
+		const etiquetaFinal = nuevaEtiqueta();
+
+		emitirSaltoCondicional(resultadoCondicion, etiquetaVerdadera);
+		emitirSalto(etiquetaFalsa);
+		lineas.push('');
+
+		emitirEtiqueta(etiquetaVerdadera);
+		emitir(operadorVerdadero, argumentosVerdadero[0] || '', argumentosVerdadero[1] || '');
+		emitirSalto(etiquetaFinal);
+		lineas.push('');
+
+		emitirEtiqueta(etiquetaFalsa);
+		emitir(operadorFalso, argumentosFalso[0] || '', argumentosFalso[1] || '');
+		lineas.push('');
+
+		return etiquetaFinal;
 	}
 
 	function generarInstruccionDispositivo(instruccion, temporalDispositivo) {
@@ -5571,7 +5665,12 @@ function generarCodigoTresDirecciones(arbol) {
 		}
 	}
 
-	for (const nodo of arbol.hijos || []) {
+	const nodosPrograma = arbol.hijos || [];
+	let etiquetaFinalGenerada = null;
+
+	for (let indiceNodo = 0; indiceNodo < nodosPrograma.length; indiceNodo++) {
+		const nodo = nodosPrograma[indiceNodo];
+		const esUltimoNodo = indiceNodo === nodosPrograma.length - 1;
 		if (nodo.tipo === 'BloqueRouter' || nodo.tipo === 'BloqueSwitch') {
 			const tipoDispositivo = nodo.tipo === 'BloqueRouter' ? 'ROUTER' : 'SWITCH';
 			const nombreDispositivo = nodo.atributos.nombre;
@@ -5589,7 +5688,15 @@ function generarCodigoTresDirecciones(arbol) {
 			const destino = nodo.atributos.destino;
 			const temporalOrigen = temporalesDispositivos.get(String(origen).toLowerCase()) || origen;
 			const temporalDestino = temporalesDispositivos.get(String(destino).toLowerCase()) || destino;
-			emitir('ping', temporalOrigen, temporalDestino);
+			const temporalPing = emitir('ping', temporalOrigen, temporalDestino);
+
+			generarCondicional(
+				temporalPing,
+				'resultado_ping',
+				['exitoso', `${origen}->${destino}`],
+				'resultado_ping',
+				['fallido', `${origen}->${destino}`]
+			);
 			continue;
 		}
 
@@ -5599,14 +5706,78 @@ function generarCodigoTresDirecciones(arbol) {
 		}
 
 		if (nodo.tipo === 'SentenciaVerificar') {
-			emitir('verificar', 'programa');
+			const temporalVerificacion = emitir('verificar', 'programa');
+
+			if (esUltimoNodo) {
+				etiquetaFinalGenerada = generarCondicionalFinal(
+					temporalVerificacion,
+					'resultado_verificacion',
+					['correcto'],
+					'resultado_verificacion',
+					['con_errores']
+				);
+			} else {
+				generarCondicional(
+					temporalVerificacion,
+					'resultado_verificacion',
+					['correcto'],
+					'resultado_verificacion',
+					['con_errores']
+				);
+			}
 		}
 	}
-	
+
+	if (etiquetaFinalGenerada) {
+		emitirEtiqueta(etiquetaFinalGenerada);
+		emitirFin();
+	} else {
+		const etiquetaFinal = nuevaEtiqueta();
+
+		if (lineas.length > 0 && lineas[lineas.length - 1] !== '') {
+			lineas.push('');
+		}
+
+		emitirSalto(etiquetaFinal);
+		lineas.push('');
+		emitirEtiqueta(etiquetaFinal);
+		emitirFin();
+	}
+
 	return {
 		codigo: lineas,
 		cuadruplos
 	};
+}
+
+function actualizarDescargaCodigoIntermedio(contenido) {
+	codigoIntermedioDescargable = contenido;
+
+	if (botonDescargarCodigoIntermedio) {
+		botonDescargarCodigoIntermedio.disabled = !contenido.trim();
+	}
+}
+
+function descargarCodigoIntermedioTxt() {
+	if (!codigoIntermedioDescargable.trim()) {
+		return;
+	}
+
+	const contenido = `CiscoScript - Código intermedio de tres direcciones\n${'='.repeat(52)}\n\n${codigoIntermedioDescargable}\n`;
+	const archivo = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+	const url = URL.createObjectURL(archivo);
+	const enlace = document.createElement('a');
+
+	enlace.href = url;
+	enlace.download = 'codigo_intermedio_ciscoscript.txt';
+	document.body.appendChild(enlace);
+	enlace.click();
+	enlace.remove();
+	URL.revokeObjectURL(url);
+}
+
+if (botonDescargarCodigoIntermedio) {
+	botonDescargarCodigoIntermedio.addEventListener('click', descargarCodigoIntermedioTxt);
 }
 
 function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
@@ -5616,21 +5787,27 @@ function mostrarCodigoTresDirecciones(arbol, puedeGenerarse) {
 
 	if (!entradaCodigo.value.trim()) {
 		salidaCodigoTresDirecciones.textContent = 'Sin código intermedio generado.';
+		actualizarDescargaCodigoIntermedio('');
+		mostrarCuadruplos([]);
+		mostrarTripletas([]);
 		return;
 	}
 
 	if (!puedeGenerarse || !arbol) {
 		salidaCodigoTresDirecciones.textContent = 'No se generó código de tres direcciones porque el programa contiene errores.';
+		actualizarDescargaCodigoIntermedio('');
+		mostrarCuadruplos([]);
+		mostrarTripletas([]);
 		return;
 	}
 
 	const resultado = generarCodigoTresDirecciones(arbol);
+	const contenido = resultado.codigo.length
+		? resultado.codigo.join('\n')
+		: 'No hay instrucciones válidas para generar código intermedio.';
 
-	salidaCodigoTresDirecciones.textContent =
-		resultado.codigo.length
-			? resultado.codigo.join("\n")
-			: "No hay instrucciones válidas para generar código intermedio.";
-
+	salidaCodigoTresDirecciones.textContent = contenido;
+	actualizarDescargaCodigoIntermedio(resultado.codigo.length ? contenido : '');
 	mostrarCuadruplos(resultado.cuadruplos);
 	mostrarTripletas(generarTripletas(resultado.cuadruplos));
 }

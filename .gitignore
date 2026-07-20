@@ -14,13 +14,12 @@ desktop.ini
 *.bak
 *.swp
 
-# Node, por si después agregas herramientas
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Build, por si después usas empaquetadores
+
 dist/
 build/
 

@@ -14,6 +14,7 @@ const panelSalidaSemantica = document.querySelector('#panelSalidaSemantica');
 const botonEjemplo = document.querySelector('#botonEjemplo');
 const botonLimpiar = document.querySelector('#botonLimpiar');
 const contenedorAutocompletado = document.querySelector('#contenedorAutocompletado');
+const botonDescargarReglasSemanticas = document.querySelector('#botonDescargarReglasSemanticas');
 
 const palabrasReservadas = {
 	ROUTER: 'TK_RES_ROUTER',
@@ -222,6 +223,10 @@ botonEjemplo.addEventListener('click', () => {
 	analizarCodigo();
 	entradaCodigo.focus();
 });
+
+if (botonDescargarReglasSemanticas) {
+	botonDescargarReglasSemanticas.addEventListener('click', descargarReglasSemanticas);
+}
 
 botonLimpiar.addEventListener('click', () => {
 	entradaCodigo.value = '';
@@ -2330,6 +2335,22 @@ function mostrarReglasSemanticas(reglasEjecutadas) {
 	}
 
 	salidaReglasSemanticas.textContent = reglasEjecutadas.join('\n');
+}
+
+function descargarReglasSemanticas() {
+	if (!salidaReglasSemanticas) {
+		return;
+	}
+	const contenido = salidaReglasSemanticas.textContent || '';
+	const archivo = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+	const url = URL.createObjectURL(archivo);
+	const enlace = document.createElement('a');
+	enlace.href = url;
+	enlace.download = 'reglas-semanticas.txt';
+	document.body.appendChild(enlace);
+	enlace.click();
+	document.body.removeChild(enlace);
+	URL.revokeObjectURL(url);
 }
 
 function convertirArbolTexto(nodo, nivel = 0) {
